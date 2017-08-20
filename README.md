@@ -1,7 +1,7 @@
 # bucketsync
 
-S3 backed FUSE Filesystem written in Golang
-Supports compression and deduplication, secure with client side encryption
+S3 backed FUSE Filesystem written in Golang.
+Supports compression and deduplication, secure with client side encryption.
 
 ## How to use
 
@@ -16,8 +16,10 @@ export AWS_SECRET_ACCESS_KEY=<AWS secret key>
 
 ## TODO
 
-* Performance improvement
-* Server side garbage collection
-* Access control
-* Stat FS / Quota
-* Multi clients support (locking)
+- [ ] Performance improvement
+  - [ ] Client cache
+  - [ ] Reduce request
+- [ ] Server side garbage collection
+- [ ] Access control
+- [ ] Stat FS / Quota
+- [ ] Multi clients support (locking)
