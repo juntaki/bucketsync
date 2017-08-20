@@ -10,11 +10,13 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/hanwen/go-fuse/fuse"
 	"github.com/pkg/errors"
 	uuid "github.com/satori/go.uuid"
 )
@@ -58,6 +60,26 @@ func NewSession() (*Session, error) {
 				return nil, err
 			}
 			bsess.root = rm
+
+			rootdir := &Meta{
+				Me:       rm.Root,
+				new:      true,
+				Parent:   RootKey,
+				Children: make(map[string]ObjectKey), // initialize
+				Mode:     fuse.S_IFDIR | 0755,
+				Size:     0,
+				UID:      0,
+				GID:      0,
+				Atime:    time.Now(),
+				Ctime:    time.Now(),
+				Mtime:    time.Now(),
+				Version:  Version,
+				queue:    NewQueue(),
+			}
+			err = bsess.Upload(rootdir)
+			if err != nil {
+				return nil, err
+			}
 			return bsess, nil
 		} else {
 			panic(err)
