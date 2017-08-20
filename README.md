@@ -1,7 +1,11 @@
 # bucketsync
 
-S3 backed FUSE Filesystem written in Golang.
-Supports compression and deduplication, secure with client side encryption.
+bucketsync is S3 backed FUSE Filesystem written in Golang. it can mount Amazon S3 as filesystem.
+
+## Feature
+
+* Block-level deduplication
+* Client side encryption
 
 ## How to use
 
