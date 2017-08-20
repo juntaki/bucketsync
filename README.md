@@ -2,7 +2,7 @@
 
 bucketsync is S3 backed FUSE Filesystem written in Golang. it can mount Amazon S3 as filesystem.
 
-## Feature
+## Features
 
 * Block-level deduplication
 * Client side encryption
