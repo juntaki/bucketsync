@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/hanwen/go-fuse/fuse"
@@ -22,27 +22,40 @@ import (
 )
 
 type Session struct {
-	svc  *s3.S3
-	root *RootMeta
+	svc    *s3.S3
+	root   *RootMeta
+	config *Config
 }
 
-var AWSBucket = os.Getenv("AWS_BUCKET_NAME")
-var AWSRegion = os.Getenv("AWS_BUCKET_REGION")
+type Config struct {
+	Bucket    string `yaml:"bucket"`
+	Region    string `yaml:"region"`
+	AccessKey string `yaml:"access_key"`
+	SecretKey string `yaml:"secret_key"`
+	Password  string `yaml:"password"`
+}
 
-const AESKey = "TODO:change this"
+func (c *Config) validate() bool {
+	return true
+}
 
-func NewSession() (*Session, error) {
+func NewSession(config *Config) (*Session, error) {
+	if !config.validate() {
+		return nil, errors.New("Invalid config")
+	}
 	sess, err := session.NewSession()
 	if err != nil {
 		return nil, err
 	}
 	svc := s3.New(sess, &aws.Config{
-		Region: aws.String(AWSRegion),
+		Region:      aws.String(config.Region),
+		Credentials: credentials.NewStaticCredentials(config.AccessKey, config.SecretKey, ""),
 		// LogLevel: aws.LogLevel(aws.LogDebugWithHTTPBody),
 	})
 
 	bsess := &Session{
-		svc: svc,
+		svc:    svc,
+		config: config,
 	}
 
 	r, err := bsess.Download(RootKey)
@@ -139,7 +152,7 @@ func (s *Session) PathWalk(relPath string) (ObjectKey, error) {
 	return uuid, nil
 }
 
-func aesStreamReader(in io.Reader) (cipher.StreamReader, error) {
+func aesStreamReader(in io.Reader, AESKey string) (cipher.StreamReader, error) {
 	key := []byte(AESKey)
 
 	block, err := aes.NewCipher(key)
@@ -152,7 +165,7 @@ func aesStreamReader(in io.Reader) (cipher.StreamReader, error) {
 	return cipher.StreamReader{S: stream, R: in}, nil
 }
 
-func aesStreamWriter(out io.Writer) (cipher.StreamWriter, error) {
+func aesStreamWriter(out io.Writer, AESKey string) (cipher.StreamWriter, error) {
 	key := []byte(AESKey)
 
 	block, err := aes.NewCipher(key)
@@ -168,7 +181,7 @@ func aesStreamWriter(out io.Writer) (cipher.StreamWriter, error) {
 func (s *Session) Download(key ObjectKey) (binaryObject, error) {
 	fmt.Println("Download: ", key)
 	paramsGet := &s3.GetObjectInput{
-		Bucket: aws.String(AWSBucket),
+		Bucket: aws.String(s.config.Bucket),
 		Key:    aws.String(string(key)),
 	}
 	obj, cause := s.svc.GetObject(paramsGet)
@@ -189,7 +202,7 @@ func (s *Session) Download(key ObjectKey) (binaryObject, error) {
 
 	r := bytes.NewReader(body)
 
-	ar, cause := aesStreamReader(r)
+	ar, cause := aesStreamReader(r, s.config.Password)
 	if cause != nil {
 		return nil, errors.Wrapf(cause, "Decrypt failed. key = %s, Check your key", key)
 	}
@@ -228,7 +241,7 @@ func (s *Session) Upload(obj bucketObject) error {
 
 	// TODO: error and close
 	buf := &bytes.Buffer{}
-	aw, err := aesStreamWriter(buf)
+	aw, err := aesStreamWriter(buf, s.config.Password)
 	if err != nil {
 		return err
 	}
@@ -244,7 +257,7 @@ func (s *Session) Upload(obj bucketObject) error {
 	aw.Close()
 
 	paramsPut := &s3.PutObjectInput{
-		Bucket: aws.String(AWSBucket),
+		Bucket: aws.String(s.config.Bucket),
 		Key:    aws.String(obj.Key()),
 		Body:   bytes.NewReader(buf.Bytes()),
 	}
@@ -258,7 +271,7 @@ func (s *Session) Upload(obj bucketObject) error {
 
 func (s *Session) IsExist(key ObjectKey) bool {
 	paramsHead := &s3.HeadObjectInput{
-		Bucket: aws.String(AWSBucket),
+		Bucket: aws.String(s.config.Bucket),
 		Key:    aws.String(string(key)),
 	}
 	_, err := s.svc.HeadObject(paramsHead)

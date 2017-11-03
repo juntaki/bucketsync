@@ -21,9 +21,15 @@ type FileSystem struct {
 	Sess *Session
 }
 
-func NewFileSystem() *pathfs.PathNodeFs {
+func NewFileSystem(config *Config) *pathfs.PathNodeFs {
+	sess, err := NewSession(config)
+	if err != nil {
+		panic(err)
+	}
+
 	fs := &FileSystem{
 		FileSystem: pathfs.NewDefaultFileSystem(),
+		Sess:       sess,
 	}
 
 	return pathfs.NewPathNodeFs(fs, nil)
@@ -239,11 +245,6 @@ func (f *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse.
 }
 
 func (f *FileSystem) OnMount(nodeFs *pathfs.PathNodeFs) {
-	sess, err := NewSession()
-	if err != nil {
-		panic(err)
-	}
-	f.Sess = sess
 }
 
 func (f *FileSystem) OnUnmount() {
