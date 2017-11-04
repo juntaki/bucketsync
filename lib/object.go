@@ -26,4 +26,4 @@ type bucketObject interface {
 type binaryObject io.Reader
 
 // ObjectKey is v4 UUID assgned to newly created object
-type ObjectKey string
+type ObjectKey = string

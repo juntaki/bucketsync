@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"crypto/aes"
 	"crypto/cipher"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"strings"
@@ -19,12 +18,15 @@ import (
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/pkg/errors"
 	uuid "github.com/satori/go.uuid"
+	"go.uber.org/zap"
 )
 
 type Session struct {
 	svc    *s3.S3
 	root   *RootMeta
 	config *Config
+
+	logger *zap.Logger
 }
 
 type Config struct {
@@ -43,6 +45,11 @@ func NewSession(config *Config) (*Session, error) {
 	if !config.validate() {
 		return nil, errors.New("Invalid config")
 	}
+
+	// Initialize logger
+	logger, _ := zap.NewProduction()
+	// TODO: output directory
+
 	sess, err := session.NewSession()
 	if err != nil {
 		return nil, err
@@ -50,12 +57,14 @@ func NewSession(config *Config) (*Session, error) {
 	svc := s3.New(sess, &aws.Config{
 		Region:      aws.String(config.Region),
 		Credentials: credentials.NewStaticCredentials(config.AccessKey, config.SecretKey, ""),
+		// Logger:      aws.Logger(logger),
 		// LogLevel: aws.LogLevel(aws.LogDebugWithHTTPBody),
 	})
 
 	bsess := &Session{
 		svc:    svc,
 		config: config,
+		logger: logger,
 	}
 
 	r, err := bsess.Download(RootKey)
@@ -63,7 +72,7 @@ func NewSession(config *Config) (*Session, error) {
 	// TODO: only not exist error
 	if err != nil {
 		if IsKeyNotFound(err) {
-			fmt.Println(err)
+			logger.Error("Key is not found", zap.Error(err))
 			rm := &RootMeta{
 				Root:    ObjectKey(uuid.NewV4().String()),
 				Version: Version,
@@ -99,11 +108,14 @@ func NewSession(config *Config) (*Session, error) {
 		}
 	}
 	bsess.root = NewRootMeta(r)
-	fmt.Println("RootUUID: ", bsess.root.Root)
+
+	logger.Info("New session created", zap.String("Root UUID", bsess.root.Root))
 	return bsess, nil
 }
 
 func (s *Session) PathWalk(relPath string) (ObjectKey, error) {
+	s.logger.Info("PathWalk", zap.String("relPath", relPath))
+
 	// parent of root
 	if relPath == ".." {
 		return ObjectKey(RootKey), nil
@@ -112,8 +124,6 @@ func (s *Session) PathWalk(relPath string) (ObjectKey, error) {
 	if relPath == "." || relPath == "" {
 		return s.root.Root, nil
 	}
-
-	fmt.Println("relPath: ", relPath)
 
 	r, err := s.Download(s.root.Root)
 	if err != nil {
@@ -127,7 +137,6 @@ func (s *Session) PathWalk(relPath string) (ObjectKey, error) {
 	var uuid ObjectKey
 
 	pathList := strings.Split(relPath, "/")
-	fmt.Println("walk: ", pathList)
 	for i, p := range pathList {
 		var ok bool
 		uuid, ok = currentMeta.Children[p]
@@ -148,7 +157,7 @@ func (s *Session) PathWalk(relPath string) (ObjectKey, error) {
 		}
 	}
 
-	fmt.Println("uuid = ", uuid)
+	s.logger.Info("PathWalk finished", zap.String("uuid", uuid))
 	return uuid, nil
 }
 
@@ -179,7 +188,7 @@ func aesStreamWriter(out io.Writer, AESKey string) (cipher.StreamWriter, error) 
 }
 
 func (s *Session) Download(key ObjectKey) (binaryObject, error) {
-	fmt.Println("Download: ", key)
+	s.logger.Info("Download", zap.String("key", key))
 	paramsGet := &s3.GetObjectInput{
 		Bucket: aws.String(s.config.Bucket),
 		Key:    aws.String(string(key)),
@@ -220,7 +229,7 @@ func (s *Session) RecursiveUpload(targetObject bucketObject) error {
 		status := currentObject.Status()
 		if status&Ready != 0 {
 			if status&Update == 0 && s.IsExist(ObjectKey(currentObject.Key())) {
-				fmt.Println("exist: ", currentObject.Key())
+				s.logger.Info("Object exist, skip upload", zap.String("key", currentObject.Key()))
 			} else {
 				err := s.Upload(currentObject)
 				if err != nil {
@@ -237,7 +246,7 @@ func (s *Session) RecursiveUpload(targetObject bucketObject) error {
 }
 
 func (s *Session) Upload(obj bucketObject) error {
-	fmt.Println("Uploading: ", obj.Key())
+	s.logger.Info("Upload", zap.String("key", obj.Key()))
 
 	// TODO: error and close
 	buf := &bytes.Buffer{}
@@ -261,7 +270,7 @@ func (s *Session) Upload(obj bucketObject) error {
 		Key:    aws.String(obj.Key()),
 		Body:   bytes.NewReader(buf.Bytes()),
 	}
-	fmt.Println("DEBUG:", "len:", len(buf.Bytes()))
+	s.logger.Debug("buffer status", zap.Int("length", len(buf.Bytes())))
 	_, cause := s.svc.PutObject(paramsPut)
 	if cause != nil {
 		return errors.Wrapf(cause, "PutObject failed. key = %s", obj.Key())

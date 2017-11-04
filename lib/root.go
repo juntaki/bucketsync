@@ -2,7 +2,6 @@ package bucketsync
 
 import (
 	"encoding/json"
-	"fmt"
 )
 
 // RootMeta is for root of object structure
@@ -30,6 +29,5 @@ func (r *RootMeta) Body() []byte {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(string(binary))
 	return binary
 }

@@ -3,7 +3,6 @@ package bucketsync
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -14,14 +13,15 @@ import (
 
 	"github.com/hanwen/go-fuse/fuse"
 	uuid "github.com/satori/go.uuid"
+	"go.uber.org/zap"
 )
 
 func (m *Meta) WriteToFilesystem(sess *Session, fp *os.File) error {
-	fmt.Println("DEBUG:", m.Children)
+	sess.logger.Debug("WriteToFilesystem", zap.Any("children", m.Children))
 	switch m.Type() {
 	case Directory:
 	case RegularFile:
-		fmt.Println("Write to tmpfile")
+		sess.logger.Info("Write to tmpfile")
 		for offset, key := range m.Children {
 			bin, err := sess.Download(key)
 			if err != nil {
@@ -33,7 +33,7 @@ func (m *Meta) WriteToFilesystem(sess *Session, fp *os.File) error {
 			}
 			off, _ := strconv.Atoi(offset)
 			size, err := fp.WriteAt(b, int64(off))
-			fmt.Println("DEBUG:", size)
+			sess.logger.Debug("Current file status", zap.Int("size", size))
 			if err != nil {
 				panic(err)
 			}
@@ -94,8 +94,7 @@ func NewMeta(me ObjectKey, parent ObjectKey, mode uint32, context *fuse.Context)
 }
 
 func CreateMetaFromFileSystem(relPath string, sess *Session) (*Meta, error) {
-	fmt.Println("-----------")
-	fmt.Println("CreateMetaFromFileSystem: ", relPath)
+	sess.logger.Info("CreateMetaFromFileSystem", zap.String("relPath", relPath))
 	absPath, _ := filepath.Abs(relPath)
 	stat, err := os.Lstat(absPath)
 	if err != nil {
@@ -121,12 +120,12 @@ func CreateMetaFromFileSystem(relPath string, sess *Session) (*Meta, error) {
 	if err != nil {
 		// TODO only if Not found
 		// parent will be fixed too
-		fmt.Println("uuid not assigned")
+		sess.logger.Info("uuid not assigned")
 		new = true
 		me = ObjectKey(uuid.NewV4().String())
 	}
 
-	fmt.Println("my uuid: ", me)
+	sess.logger.Info("uuid assigned", zap.String("uuid", me))
 
 	meta := &Meta{
 		Me:       me,

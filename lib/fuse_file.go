@@ -1,11 +1,11 @@
 package bucketsync
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
+	"go.uber.org/zap"
 )
 
 type File struct {
@@ -18,7 +18,7 @@ type File struct {
 }
 
 func (f *File) Flush() fuse.Status {
-	fmt.Println("Flush: ", string(f.objectkey), f.sess)
+	f.sess.logger.Info("Flush", zap.String("key", f.objectkey))
 
 	err := f.meta.UpdateChildrenByFileSystem(string(f.objectkey))
 	if err != nil {
