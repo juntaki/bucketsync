@@ -18,12 +18,13 @@ go get -u -v github.com/juntaki/bucketsync
 Run
 
 ~~~
-export AWS_BUCKET_NAME=<bucket_name>
-export AWS_BUCKET_REGION=<reginon, e.g. ap-northeast-1>
-export AWS_ACCESS_KEY_ID=<AWS access key>
-export AWS_SECRET_ACCESS_KEY=<AWS secret key>
+bucketsync config --bucket <Bucket name> \
+                  --region <Region, e.g. ap-northeast-1> \
+                  --accesskey <AWS access key> \
+                  --secretkey <AWS secret key> \
+                  --password <Password for data encryption>
 
-bucketsync -m /path/to/mountpoint
+bucketsync mount --dir /path/to/mountpoint
 ~~~
 
 ## TODO
