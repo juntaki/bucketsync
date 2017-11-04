@@ -31,7 +31,6 @@ func NewFileSystem(config *Config) *pathfs.PathNodeFs {
 		FileSystem: pathfs.NewDefaultFileSystem(),
 		Sess:       sess,
 	}
-
 	return pathfs.NewPathNodeFs(fs, nil)
 }
 
@@ -358,11 +357,31 @@ func (f *FileSystem) Unlink(name string, context *fuse.Context) (code fuse.Statu
 	return fuse.OK
 }
 
-// TODO
-// func (f *FileSystem) Link(oldName string, newName string, context *fuse.Context) (code fuse.Status)
-// func (f *FileSystem) Mknod(name string, mode uint32, dev uint32, context *fuse.Context) fuse.Status
-// func (f *FileSystem) GetXAttr(name string, attribute string, context *fuse.Context) (data []byte, code fuse.Status)
-// func (f *FileSystem) ListXAttr(name string, context *fuse.Context) (attributes []string, code fuse.Status)
-// func (f *FileSystem) RemoveXAttr(name string, attr string, context *fuse.Context) fuse.Status
-// func (f *FileSystem) SetXAttr(name string, attr string, data []byte, flags int, context *fuse.Context) fuse.Status
-// func (f *FileSystem) StatFs(name string) *fuse.StatfsOut
+func (f *FileSystem) String() string {
+	return "bucketsync"
+}
+
+// // TODO
+// func (f *FileSystem) GetXAttr(name string, attribute string, context *fuse.Context) (data []byte, code fuse.Status) {
+// 	return nil, fuse.OK
+// }
+// func (f *FileSystem) ListXAttr(name string, context *fuse.Context) (attributes []string, code fuse.Status) {
+// 	return nil, fuse.OK
+// }
+// func (f *FileSystem) RemoveXAttr(name string, attr string, context *fuse.Context) fuse.Status {
+// 	return fuse.OK
+// }
+// func (f *FileSystem) SetXAttr(name string, attr string, data []byte, flags int, context *fuse.Context) fuse.Status {
+// 	return fuse.OK
+// }
+// func (f *FileSystem) Link(oldName string, newName string, context *fuse.Context) (code fuse.Status) {
+// 	return fuse.OK
+// }
+// func (f *FileSystem) Mknod(name string, mode uint32, dev uint32, context *fuse.Context) fuse.Status {
+// 	return fuse.OK
+// }
+// func (f *FileSystem) StatFs(name string) *fuse.StatfsOut {
+// 	return nil
+// }
+// func (f *FileSystem) SetDebug(debug bool) {
+// }

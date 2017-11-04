@@ -148,7 +148,7 @@ func mount(cli *cli.Context) error {
 		os.Exit(1)
 	}
 	fs := bucketsync.NewFileSystem(config)
-	fs.SetDebug(true)
+	//fs.SetDebug(true)
 
 	s, _, err := nodefs.MountRoot(cli.String("dir"), fs.Root(), nil)
 	if err != nil {
