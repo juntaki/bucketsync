@@ -26,7 +26,7 @@ type Session struct {
 	root   *RootMeta
 	config *Config
 
-	logger *zap.Logger
+	logger *Logger
 }
 
 type Config struct {
@@ -35,6 +35,7 @@ type Config struct {
 	AccessKey string `yaml:"access_key"`
 	SecretKey string `yaml:"secret_key"`
 	Password  string `yaml:"password"`
+	Logging   string `yaml:"logging"`
 }
 
 func (c *Config) validate() bool {
@@ -46,21 +47,25 @@ func NewSession(config *Config) (*Session, error) {
 		return nil, errors.New("Invalid config")
 	}
 
-	// Initialize logger
-	logger, _ := zap.NewProduction()
-	// TODO: output directory
+	logger, err := NewLogger(config.Logging == "development")
+	if err != nil {
+		return nil, err
+	}
 
 	sess, err := session.NewSession()
 	if err != nil {
 		return nil, err
 	}
 	svc := s3.New(sess, &aws.Config{
-		Region:      aws.String(config.Region),
-		Credentials: credentials.NewStaticCredentials(config.AccessKey, config.SecretKey, ""),
-		// Logger:      aws.Logger(logger),
-		// LogLevel: aws.LogLevel(aws.LogDebugWithHTTPBody),
+		Region: aws.String(config.Region),
+		Credentials: credentials.NewStaticCredentials(
+			config.AccessKey,
+			config.SecretKey,
+			"",
+		),
+		Logger: aws.Logger(logger),
+		//LogLevel:    aws.LogLevel(aws.LogDebug),
 	})
-
 	bsess := &Session{
 		svc:    svc,
 		config: config,

@@ -76,6 +76,11 @@ func main() {
 					Value: "",
 					Usage: "password for data encryption",
 				},
+				cli.StringFlag{
+					Name:  "logging",
+					Value: "production",
+					Usage: "logging mode",
+				},
 			},
 		},
 	}
@@ -122,7 +127,10 @@ func config(cli *cli.Context) error {
 	if cli.String("password") != "" {
 		config.Password = cli.String("password") // TODO: hash
 	}
-
+	if cli.String("logging") != "" {
+		config.Logging = cli.String("logging")
+	}
+	// TODO: check logging mode
 	configYAML, err := yaml.Marshal(config)
 	if err != nil {
 		return err
@@ -148,7 +156,7 @@ func mount(cli *cli.Context) error {
 		os.Exit(1)
 	}
 	fs := bucketsync.NewFileSystem(config)
-	//fs.SetDebug(true)
+	fs.SetDebug(true)
 
 	s, _, err := nodefs.MountRoot(cli.String("dir"), fs.Root(), nil)
 	if err != nil {
