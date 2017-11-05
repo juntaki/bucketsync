@@ -30,12 +30,13 @@ type Session struct {
 }
 
 type Config struct {
-	Bucket    string `yaml:"bucket"`
-	Region    string `yaml:"region"`
-	AccessKey string `yaml:"access_key"`
-	SecretKey string `yaml:"secret_key"`
-	Password  string `yaml:"password"`
-	Logging   string `yaml:"logging"`
+	Bucket        string `yaml:"bucket"`
+	Region        string `yaml:"region"`
+	AccessKey     string `yaml:"access_key"`
+	SecretKey     string `yaml:"secret_key"`
+	Password      string `yaml:"password"`
+	Logging       string `yaml:"logging"`
+	LogOutputPath string `yaml:"log_output_path"`
 }
 
 func (c *Config) validate() bool {
@@ -47,7 +48,7 @@ func NewSession(config *Config) (*Session, error) {
 		return nil, errors.New("Invalid config")
 	}
 
-	logger, err := NewLogger(config.Logging == "development")
+	logger, err := NewLogger(config.LogOutputPath, config.Logging == "development")
 	if err != nil {
 		return nil, err
 	}

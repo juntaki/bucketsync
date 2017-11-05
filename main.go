@@ -3,13 +3,15 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
-	"syscall"
 
 	"io/ioutil"
 
 	"os/user"
 	"path"
+
+	"strconv"
 
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
@@ -30,6 +32,10 @@ func main() {
 			Usage:  "Mount S3 as filesystem",
 			Action: mount,
 			Flags: []cli.Flag{
+				cli.BoolFlag{
+					Name:   "daemon",
+					Hidden: true,
+				},
 				cli.StringFlag{
 					Name:  "dir",
 					Value: "",
@@ -42,7 +48,21 @@ func main() {
 			Aliases: []string{"umount"},
 			Usage:   "Unmount bucketsync filesystem",
 			Action: func(c *cli.Context) error {
-				fmt.Println("unmount", c.Args().First())
+				pidStr, err := ioutil.ReadFile(configDir("pidfile"))
+				if err != nil {
+					return err
+				}
+
+				pid, err := strconv.Atoi(string(pidStr))
+				if err != nil {
+					return err
+				}
+
+				process, err := os.FindProcess(pid)
+				if err != nil {
+					return err
+				}
+				process.Signal(os.Interrupt)
 				return nil
 			},
 		},
@@ -88,12 +108,39 @@ func main() {
 	app.Run(os.Args)
 }
 
-func readConfig() (*bucketsync.Config, error) {
+func configDir(filename string) string {
 	usr, err := user.Current()
 	if err != nil {
-		return nil, err
+		return filename
 	}
-	configYAML, err := ioutil.ReadFile(path.Join(usr.HomeDir, ".bucketsync.yml"))
+	configPath := path.Join(usr.HomeDir, ".bucketsync")
+
+	file, err := os.Open(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			err = os.Mkdir(configPath, 0700)
+			if err != nil {
+				return filename
+			}
+			file, err = os.Open(configPath)
+			if err != nil {
+				return filename
+			}
+		} else {
+			return filename
+		}
+	}
+
+	stat, err := file.Stat()
+	if err != nil || !stat.IsDir() {
+		return filename
+	}
+
+	return path.Join(configPath, filename)
+}
+
+func readConfig() (*bucketsync.Config, error) {
+	configYAML, err := ioutil.ReadFile(configDir("config.yml"))
 	if err != nil {
 		return nil, err
 	}
@@ -130,16 +177,14 @@ func config(cli *cli.Context) error {
 	if cli.String("logging") != "" {
 		config.Logging = cli.String("logging")
 	}
+
+	config.LogOutputPath = configDir("bucketsync.log")
 	// TODO: check logging mode
 	configYAML, err := yaml.Marshal(config)
 	if err != nil {
 		return err
 	}
-	usr, err := user.Current()
-	if err != nil {
-		return err
-	}
-	err = ioutil.WriteFile(path.Join(usr.HomeDir, ".bucketsync.yml"), configYAML, 0600)
+	err = ioutil.WriteFile(path.Join(configDir("config.yml")), configYAML, 0600)
 	if err != nil {
 		return err
 	}
@@ -155,6 +200,19 @@ func mount(cli *cli.Context) error {
 		fmt.Println("Specify mount point")
 		os.Exit(1)
 	}
+
+	// Exec daemon
+	if !cli.Bool("daemon") {
+		args := append(os.Args[1:len(os.Args)], "--daemon")
+		cmd := exec.Command(os.Args[0], args...)
+		err := cmd.Start()
+		if err != nil {
+			return err
+		}
+		ioutil.WriteFile(configDir("pidfile"), []byte(strconv.Itoa(cmd.Process.Pid)), 0600)
+		os.Exit(0)
+	}
+
 	fs := bucketsync.NewFileSystem(config)
 	fs.SetDebug(true)
 
@@ -163,12 +221,11 @@ func mount(cli *cli.Context) error {
 		panic(err)
 	}
 
-	// Ctrl + C unmount
+	// unmount
 	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGINT)
+	signal.Notify(c, os.Interrupt)
 	go func(s *fuse.Server) {
 		<-c
-		fmt.Println("Unmount")
 		s.Unmount()
 	}(s)
 
