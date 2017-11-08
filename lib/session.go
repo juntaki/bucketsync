@@ -128,7 +128,7 @@ func (s *Session) NewDirectory(key ObjectKey) (*Directory, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	node.sess = s
 	return node, nil
 }
 
@@ -152,7 +152,7 @@ func (s *Session) NewFile(key ObjectKey) (*File, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	node.sess = s
 	return node, nil
 }
 
@@ -176,7 +176,7 @@ func (s *Session) NewSymLink(key ObjectKey) (*SymLink, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	node.sess = s
 	return node, nil
 }
 
@@ -211,11 +211,11 @@ func (s *Session) NewTypedNode(key ObjectKey) (interface{}, error) {
 
 	switch tmpNode.Meta.Mode & syscall.S_IFMT {
 	case syscall.S_IFDIR:
-		node = &Directory{}
+		node = &Directory{sess: s}
 	case syscall.S_IFREG:
-		node = &File{}
+		node = &File{sess: s}
 	case syscall.S_IFLNK:
-		node = &SymLink{}
+		node = &SymLink{sess: s}
 	default:
 		panic("Not implemented")
 	}
