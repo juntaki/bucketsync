@@ -1,10 +1,7 @@
 package bucketsync
 
 import (
-	"bytes"
 	"hash/fnv"
-	"io/ioutil"
-	"os"
 	"path/filepath"
 	"syscall"
 	"time"
@@ -40,206 +37,193 @@ func InodeHash(o ObjectKey) uint64 {
 	return h.Sum64()
 }
 
-func (f *FileSystem) GetAttr(name string, context *fuse.Context) (*fuse.Attr, fuse.Status) {
+func NewObjectKey() ObjectKey {
+	return uuid.NewV4().String()
+}
 
+func (f *FileSystem) GetAttr(name string, context *fuse.Context) (*fuse.Attr, fuse.Status) {
 	f.Sess.logger.Info("GetAttr", zap.String("name", name))
-	meta, err := NewMetaFromPath(name, f.Sess)
+
+	key, err := f.Sess.PathWalk(name)
 	if err != nil {
-		if IsKeyNotFound(err) {
-			return nil, fuse.ENOENT
-		}
-		panic(err)
+		return nil, fuse.ENOENT
 	}
+
+	node, err := f.Sess.NewNode(key)
+	if err != nil {
+		return nil, fuse.ENOENT
+	}
+
 	attr := &fuse.Attr{
-		Ino:   InodeHash(ObjectKey(meta.Key())),
-		Size:  uint64(meta.Size),
-		Mode:  meta.Mode,
+		Ino:   InodeHash(key),
+		Size:  uint64(node.Meta.Size),
+		Mode:  node.Meta.Mode,
 		Nlink: 1,
 		Owner: fuse.Owner{
-			Uid: meta.UID,
-			Gid: meta.GID,
+			Uid: node.Meta.UID,
+			Gid: node.Meta.GID,
 		},
 	}
-	attr.SetTimes(&meta.Atime, &meta.Mtime, &meta.Ctime)
+	attr.SetTimes(&node.Meta.Atime, &node.Meta.Mtime, &node.Meta.Ctime)
 	return attr, fuse.OK
 }
 
 func (f *FileSystem) Open(name string, flags uint32, context *fuse.Context) (file nodefs.File, code fuse.Status) {
-
 	f.Sess.logger.Info("Open", zap.String("name", name))
 	key, err := f.Sess.PathWalk(name)
 	if err != nil {
-		if IsKeyNotFound(err) {
-			return nil, fuse.ENOENT
-		}
-		panic(err)
+		return nil, fuse.ENOENT
 	}
-	meta, err := NewMetaFromObjectKey(key, f.Sess)
+
+	node, err := f.Sess.NewFile(key)
 	if err != nil {
-		panic(err)
+		return nil, fuse.ENOENT
 	}
-	// Create tmp file
-	fp, err := os.Create(string(key))
+
+	return &OpenedFile{file: node}, fuse.OK
+}
+
+func (f *FileSystem) getParent(name string) (*Directory, fuse.Status) {
+	parent := filepath.Dir(name)
+	key, err := f.Sess.PathWalk(parent)
 	if err != nil {
-		panic(err)
+		return nil, fuse.ENOENT
 	}
-	meta.WriteToFilesystem(f.Sess, fp)
-	file = &File{
-		File:      nodefs.NewLoopbackFile(fp),
-		sess:      f.Sess,
-		objectkey: key,
-		tmpfile:   fp,
-		meta:      meta,
+	dir, err := f.Sess.NewDirectory(key)
+	if err != nil {
+		return nil, fuse.EACCES
 	}
-	return file, fuse.OK
+	return dir, fuse.OK
 }
 
 func (f *FileSystem) Rename(oldName string, newName string, context *fuse.Context) (code fuse.Status) {
 	f.Sess.logger.Info("Rename", zap.String("oldName", oldName), zap.String("newName", newName))
 
-	key, err := f.Sess.PathWalk(oldName)
-	if err != nil {
-		if IsKeyNotFound(err) {
-			return fuse.ENOENT
-		}
-		panic(err)
+	// Get old dir
+	dirOld, status := f.getParent(oldName)
+	if status != fuse.OK {
+		return status
 	}
 
-	// New name
-	parentNew := filepath.Dir(newName)
-	parentNewMeta, err := NewMetaFromPath(parentNew, f.Sess)
-	if err != nil {
-		panic(err)
+	// Get new dir
+	dirNew, status := f.getParent(newName)
+	if status != fuse.OK {
+		return status
 	}
-	parentNewMeta.Children[filepath.Base(newName)] = key
-	f.Sess.Upload(parentNewMeta)
 
-	// Old name
-	parentOld := filepath.Dir(oldName)
-	parentOldMeta, err := NewMetaFromPath(parentOld, f.Sess)
+	// Rename
+	dirNew.FileMeta[filepath.Base(newName)] = dirOld.FileMeta[filepath.Base(newName)]
+	delete(dirOld.FileMeta, filepath.Base(oldName))
+
+	// Save
+	err := dirNew.Save()
 	if err != nil {
-		panic(err)
+		return fuse.EIO
 	}
-	delete(parentOldMeta.Children, filepath.Base(oldName))
-	f.Sess.Upload(parentOldMeta)
-
+	err = dirOld.Save()
+	if err != nil {
+		return fuse.EIO
+	}
 	return fuse.OK
 }
 
 func (f *FileSystem) Mkdir(name string, mode uint32, context *fuse.Context) fuse.Status {
-
 	f.Sess.logger.Info("Mkdir", zap.String("name", name))
-	// Add new uuid to parent object
-	parent := filepath.Dir(name)
-	parentMeta, err := NewMetaFromPath(parent, f.Sess)
-	if err != nil {
-		panic(err)
+
+	dir, status := f.getParent(name)
+	if status != fuse.OK {
+		return status
 	}
-	f.Sess.logger.Info("uuid not assigned")
 
-	key := ObjectKey(uuid.NewV4().String())
+	// Set
+	newKey := NewObjectKey()
+	dir.FileMeta[filepath.Base(name)] = newKey
 
-	parentMeta.Children[filepath.Base(name)] = key
-	f.Sess.Upload(parentMeta)
+	newDir := f.Sess.CreateDirectory(newKey, dir.Key, mode, context)
 
-	// New File
-	meta := NewMeta(key, ObjectKey(parentMeta.Key()), fuse.S_IFDIR|mode, context)
-	f.Sess.Upload(meta)
+	// Save
+	err := newDir.Save()
+	if err != nil {
+		return fuse.EIO
+	}
+	err = dir.Save()
+	if err != nil {
+		return fuse.EIO
+	}
 	return fuse.OK
 }
 
 func (f *FileSystem) Symlink(value string, linkName string, context *fuse.Context) (code fuse.Status) {
-
 	f.Sess.logger.Info("Symlink",
 		zap.String("value", value),
 		zap.String("linkName", linkName))
 
-	// Add new uuid to parent object
-	parent := filepath.Dir(linkName)
-	parentMeta, err := NewMetaFromPath(parent, f.Sess)
-	if err != nil {
-		panic(err)
+	dir, status := f.getParent(linkName)
+	if status != fuse.OK {
+		return status
 	}
-	f.Sess.logger.Info("uuid not assigned")
 
-	key := ObjectKey(uuid.NewV4().String())
+	// Set
+	newKey := NewObjectKey()
+	dir.FileMeta[filepath.Base(linkName)] = newKey
+	symlink := f.Sess.CreateSymLink(newKey, dir.Key, value, context)
 
-	parentMeta.Children[filepath.Base(linkName)] = key
-	f.Sess.Upload(parentMeta)
-
-	// Upload symlink
-	meta := NewMeta(key, ObjectKey(parentMeta.Key()), fuse.S_IFLNK, context)
-	linkContent := bytes.NewReader([]byte(value))
-	e := NewExtent(linkContent, meta.extentLinkCallback)
-	meta.queue.Enqueue(e)
-	f.Sess.RecursiveUpload(meta)
-
+	// Save
+	err := symlink.Save()
+	if err != nil {
+		return fuse.EIO
+	}
+	err = dir.Save()
+	if err != nil {
+		return fuse.EIO
+	}
 	return fuse.OK
 }
 
-func (f *FileSystem) Create(name string, flags uint32, mode uint32, context *fuse.Context) (file nodefs.File, code fuse.Status) {
+func (f *FileSystem) Create(name string, flags uint32, mode uint32, context *fuse.Context) (nodefs.File, fuse.Status) {
 	// TODO: flags??
-
 	f.Sess.logger.Info("Create",
 		zap.String("name", name),
 		zap.Uint32("flags", flags),
 		zap.Uint32("mode", mode),
 	)
 
-	// Add new uuid to parent object
-	parent := filepath.Dir(name)
-	parentMeta, err := NewMetaFromPath(parent, f.Sess)
+	dir, status := f.getParent(name)
+	if status != fuse.OK {
+		return nil, status
+	}
+
+	// Set
+	newKey := NewObjectKey()
+	dir.FileMeta[filepath.Base(name)] = newKey
+
+	file := f.Sess.CreateFile(newKey, dir.Key, mode, context)
+
+	err := file.Save()
 	if err != nil {
-		panic(err)
+		return nil, fuse.EIO
 	}
-	f.Sess.logger.Info("uuid not assigned")
-
-	key := ObjectKey(uuid.NewV4().String())
-
-	parentMeta.Children[filepath.Base(name)] = key
-	f.Sess.Upload(parentMeta)
-
-	// New File
-	meta := NewMeta(key, ObjectKey(parentMeta.Key()), fuse.S_IFREG|mode, context)
-	f.Sess.Upload(meta)
-	fp, err := os.Create(string(key))
+	err = dir.Save()
 	if err != nil {
-		panic(err)
+		return nil, fuse.EIO
 	}
-	meta.WriteToFilesystem(f.Sess, fp)
-	file = &File{
-		File:      nodefs.NewLoopbackFile(fp),
-		sess:      f.Sess,
-		objectkey: key,
-		tmpfile:   fp,
-		meta:      meta,
-	}
-
-	return file, fuse.OK
+	return &OpenedFile{file: file}, fuse.OK
 }
 
 func (f *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse.DirEntry, code fuse.Status) {
-
 	f.Sess.logger.Info("OpenDir", zap.String("name", name))
-	meta, err := NewMetaFromPath(name, f.Sess)
+	key, err := f.Sess.PathWalk(name)
 	if err != nil {
-		if IsKeyNotFound(err) {
-			return nil, fuse.ENOENT
-		}
-		panic(err)
+		return nil, fuse.ENOENT
 	}
 
-	if meta.Type() != Directory {
-		return nil, fuse.ENOTDIR
+	dir, err := f.Sess.NewDirectory(key)
+	if err != nil {
+		return nil, fuse.ENOENT
 	}
 
 	stream = make([]fuse.DirEntry, 0)
-	for name, objkey := range meta.Children {
-		// TODO: Is it OK?
-		// meta, err := NewMetaFromObjectKey(objkey, f.Sess)
-		// if err != nil {
-		// 	panic(err)
-		// }
+	for name, objkey := range dir.FileMeta {
 		dentry := fuse.DirEntry{
 			Name: name,
 			Ino:  InodeHash(objkey),
@@ -257,103 +241,179 @@ func (f *FileSystem) OnUnmount() {
 }
 
 func (f *FileSystem) Chmod(name string, mode uint32, context *fuse.Context) (code fuse.Status) {
-
 	f.Sess.logger.Info("Chmod", zap.String("name", name))
-	meta, err := NewMetaFromPath(name, f.Sess)
+	key, err := f.Sess.PathWalk(name)
 	if err != nil {
-		panic(err)
+		return fuse.ENOENT
 	}
-	f.Sess.logger.Info("Current Mode", zap.Uint32("mode", meta.Mode))
-	meta.Mode = (meta.Mode & syscall.S_IFMT) | mode
-	f.Sess.logger.Info("New mode", zap.Uint32("mode", meta.Mode))
-	meta.Ctime = time.Now()
-	f.Sess.Upload(meta)
+
+	node, err := f.Sess.NewTypedNode(key)
+	if err != nil {
+		return fuse.ENOENT
+	}
+
+	switch typed := node.(type) {
+	case *Directory:
+		typed.Meta.Mode = (typed.Meta.Mode & syscall.S_IFMT) | mode
+		typed.Meta.Ctime = time.Now()
+		err = typed.Save()
+	case *File:
+		typed.Meta.Mode = (typed.Meta.Mode & syscall.S_IFMT) | mode
+		typed.Meta.Ctime = time.Now()
+		err = typed.Save()
+	case *SymLink:
+		typed.Meta.Mode = (typed.Meta.Mode & syscall.S_IFMT) | mode
+		typed.Meta.Ctime = time.Now()
+		err = typed.Save()
+	}
+	if err != nil {
+		return fuse.EIO
+	}
 	return fuse.OK
 }
 
 func (f *FileSystem) Chown(name string, uid uint32, gid uint32, context *fuse.Context) (code fuse.Status) {
-
 	f.Sess.logger.Info("Chown", zap.String("name", name))
-	meta, err := NewMetaFromPath(name, f.Sess)
+	key, err := f.Sess.PathWalk(name)
 	if err != nil {
-		panic(err)
+		return fuse.ENOENT
 	}
-	meta.UID = uid
-	meta.GID = gid
-	meta.Ctime = time.Now()
-	f.Sess.Upload(meta)
+
+	node, err := f.Sess.NewTypedNode(key)
+	if err != nil {
+		return fuse.ENOENT
+	}
+
+	switch typed := node.(type) {
+	case *Directory:
+		typed.Meta.UID = uid
+		typed.Meta.GID = gid
+		typed.Meta.Ctime = time.Now()
+		err = typed.Save()
+	case *File:
+		typed.Meta.UID = uid
+		typed.Meta.GID = gid
+		typed.Meta.Ctime = time.Now()
+		err = typed.Save()
+	case *SymLink:
+		typed.Meta.UID = uid
+		typed.Meta.GID = gid
+		typed.Meta.Ctime = time.Now()
+		err = typed.Save()
+	}
+	if err != nil {
+		return fuse.EIO
+	}
 	return fuse.OK
 }
 
 func (f *FileSystem) Utimens(name string, Atime *time.Time, Mtime *time.Time, context *fuse.Context) (code fuse.Status) {
-
 	f.Sess.logger.Info("Utimens", zap.String("name", name))
-	meta, err := NewMetaFromPath(name, f.Sess)
+	key, err := f.Sess.PathWalk(name)
 	if err != nil {
-		panic(err)
+		return fuse.ENOENT
 	}
-	meta.Atime = *Atime
-	meta.Mtime = *Mtime
-	meta.Ctime = time.Now()
-	f.Sess.Upload(meta)
+
+	node, err := f.Sess.NewTypedNode(key)
+	if err != nil {
+		return fuse.ENOENT
+	}
+
+	switch typed := node.(type) {
+	case *Directory:
+		typed.Meta.Atime = *Atime
+		typed.Meta.Mtime = *Mtime
+		typed.Meta.Ctime = time.Now()
+		err = typed.Save()
+	case *File:
+		typed.Meta.Atime = *Atime
+		typed.Meta.Mtime = *Mtime
+		typed.Meta.Ctime = time.Now()
+		err = typed.Save()
+	case *SymLink:
+		typed.Meta.Atime = *Atime
+		typed.Meta.Mtime = *Mtime
+		typed.Meta.Ctime = time.Now()
+		err = typed.Save()
+	}
+	if err != nil {
+		return fuse.EIO
+	}
 	return fuse.OK
+
 }
 
 func (f *FileSystem) Access(name string, mode uint32, context *fuse.Context) (code fuse.Status) {
-
 	f.Sess.logger.Info("Access",
 		zap.String("name", name),
 		zap.Uint32("mode", mode),
 	)
-	// TODO:
-	return fuse.OK
+
+	key, err := f.Sess.PathWalk(name)
+	if err != nil {
+		return fuse.ENOENT
+	}
+
+	if f.Sess.IsExist(key) {
+		return fuse.OK
+	}
+	return fuse.ENOENT
 }
 
 func (f *FileSystem) Truncate(name string, size uint64, context *fuse.Context) (code fuse.Status) {
-
 	f.Sess.logger.Info("Truncate", zap.String("name", name))
-	meta, err := NewMetaFromPath(name, f.Sess)
+	key, err := f.Sess.PathWalk(name)
 	if err != nil {
-		panic(err)
+		return fuse.ENOENT
 	}
-	meta.Size = int64(size)
-	//TODO: Update Children
-	f.Sess.Upload(meta)
+
+	node, err := f.Sess.NewFile(key)
+	if err != nil {
+		return fuse.ENOENT
+	}
+
+	node.Meta.Size = int64(size)
+	err = node.Save()
+	if err != nil {
+		return fuse.EIO
+	}
 	return fuse.OK
 }
 
 func (f *FileSystem) Readlink(name string, context *fuse.Context) (string, fuse.Status) {
-
 	f.Sess.logger.Info("Readlink", zap.String("name", name))
-	meta, err := NewMetaFromPath(name, f.Sess)
-
-	bin, err := f.Sess.Download(meta.Children["linkto"])
+	key, err := f.Sess.PathWalk(name)
 	if err != nil {
-		panic(err)
+		return "", fuse.ENOENT
 	}
 
-	link, err := ioutil.ReadAll(bin)
+	node, err := f.Sess.NewSymLink(key)
 	if err != nil {
-		panic(err)
+		return "", fuse.ENOENT
 	}
-	return string(link), fuse.OK
+
+	return node.LinkTo, fuse.OK
 }
 
 func (f *FileSystem) Rmdir(name string, context *fuse.Context) (code fuse.Status) {
+
 	return f.Unlink(name, context)
 }
 
 func (f *FileSystem) Unlink(name string, context *fuse.Context) (code fuse.Status) {
-
 	f.Sess.logger.Info("Unlink", zap.String("name", name))
-	parent := filepath.Dir(name)
-	meta, err := NewMetaFromPath(parent, f.Sess)
-	if err != nil {
-		panic(err)
+	dir, status := f.getParent(name)
+	if status != fuse.OK {
+		return status
 	}
-	delete(meta.Children, filepath.Base(name))
-	// TODO: Delete meta on S3
-	f.Sess.Upload(meta)
+
+	delete(dir.FileMeta, filepath.Base(name))
+
+	err := dir.Save()
+	if err != nil {
+		return fuse.EIO
+	}
+
 	return fuse.OK
 }
 

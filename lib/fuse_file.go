@@ -1,40 +1,85 @@
 package bucketsync
 
 import (
-	"os"
+	"time"
 
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
-	"go.uber.org/zap"
 )
 
-type File struct {
+// nodefs.File interface
+type OpenedFile struct {
 	nodefs.File
-	sess      *Session
-	path      string
-	objectkey ObjectKey
-	tmpfile   *os.File
-	meta      *Meta
+	file *File
 }
 
-func (f *File) Flush() fuse.Status {
-	f.sess.logger.Info("Flush", zap.String("key", f.objectkey))
-
-	err := f.meta.UpdateChildrenByFileSystem(string(f.objectkey))
-	if err != nil {
-		panic(err)
-	}
-	err = f.sess.RecursiveUpload(f.meta)
-	if err != nil {
-		panic(err)
-	}
-	//TODO: Close
+func (f *OpenedFile) Flush() fuse.Status {
 	return fuse.OK
 }
 
-func (f *File) String() string {
-	return string(f.objectkey)
+func (f *OpenedFile) String() string {
+	return f.file.Key
+}
+
+func (f *OpenedFile) InnerFile() nodefs.File {
+	return f
+}
+
+func (f *OpenedFile) SetInode(*nodefs.Inode) {
+
+}
+
+func (f *OpenedFile) Read(dest []byte, off int64) (fuse.ReadResult, fuse.Status) {
+	return &ReadResult{}, fuse.OK
+}
+
+func (f *OpenedFile) Write(data []byte, off int64) (written uint32, code fuse.Status) {
+	return uint32(len(data)), fuse.OK
+}
+
+func (f *OpenedFile) Flock(flags int) fuse.Status {
+	return fuse.OK
+}
+
+func (f *OpenedFile) Release() {
+
+}
+func (f *OpenedFile) Fsync(flags int) (code fuse.Status) {
+	return fuse.OK
+}
+func (f *OpenedFile) Truncate(size uint64) fuse.Status {
+	return fuse.OK
+}
+func (f *OpenedFile) GetAttr(out *fuse.Attr) fuse.Status {
+	return fuse.OK
+
+}
+func (f *OpenedFile) Chown(uid uint32, gid uint32) fuse.Status {
+	return fuse.OK
+
+}
+func (f *OpenedFile) Chmod(perms uint32) fuse.Status {
+	return fuse.OK
+
+}
+func (f *OpenedFile) Utimens(atime *time.Time, mtime *time.Time) fuse.Status {
+	return fuse.OK
+
+}
+func (f *OpenedFile) Allocate(off uint64, size uint64, mode uint32) (code fuse.Status) {
+	return fuse.OK
 }
 
 type ReadResult struct {
+	bytes []byte
+}
+
+func (r *ReadResult) Bytes(buf []byte) ([]byte, fuse.Status) {
+	return r.bytes, fuse.OK
+}
+func (r *ReadResult) Size() int {
+	return len(r.bytes)
+}
+func (r *ReadResult) Done() {
+
 }
