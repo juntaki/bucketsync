@@ -11,7 +11,7 @@ type Logger struct {
 }
 
 func NewLogger(outputPath string, debug bool) (logger *Logger, err error) {
-	config := zap.NewProductionConfig()
+	config := zap.NewDevelopmentConfig()
 	config.OutputPaths = []string{outputPath}
 	config.Development = debug
 

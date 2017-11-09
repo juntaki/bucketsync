@@ -3,8 +3,7 @@ package bucketsync
 import "io"
 
 // Version of object data structure
-const RootKey = "root"
-const ChunkSize = 1024 * 1024
+const ExtentSize = 1024 * 1024
 
 type bucketObject interface {
 	Key() string

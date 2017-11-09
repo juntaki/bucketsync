@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"fmt"
+	"sync"
 	"time"
 
 	"encoding/json"
@@ -46,39 +47,80 @@ func (o *Directory) Save() error {
 }
 
 type File struct {
-	Key    ObjectKey         `json:"key"`
-	Parent ObjectKey         `json:"parent"`
-	Meta   Meta              `json:"meta"`
-	Extent map[string]Extent `json:"children"`
-	sess   *Session
+	Key        ObjectKey         `json:"key"`
+	Parent     ObjectKey         `json:"parent"`
+	Meta       Meta              `json:"meta"`
+	ExtentSize int64             `json:"extent_size"`
+	Extent     map[int64]*Extent `json:"extent"`
+	sess       *Session
+	dirty      bool
 }
 
 func (o *File) Save() error {
+	wg := sync.WaitGroup{}
+	errc := make(chan error)
+	done := make(chan struct{})
 	for _, e := range o.Extent {
-		if e.update {
-			key := fmt.Sprintf("%x", sha256.Sum256(e.body))
+		wg.Add(1)
+		go func(e *Extent) {
+			if !e.dirty {
+				wg.Done()
+				return
+			}
+			key := e.CurrentKey()
 			if o.sess.IsExist(key) {
-				continue
+				wg.Done()
+				return
 			}
 			err := o.sess.Upload(key, bytes.NewReader(e.body))
 			if err != nil {
-				return err
+				errc <- err
+				return
 			}
+			e.dirty = false
+			wg.Done()
+		}(e)
+	}
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case err := <-errc:
+		return err
+	case <-done:
+		result, err := json.Marshal(o)
+		if err != nil {
+			return err
 		}
+		err = o.sess.Upload(o.Key, bytes.NewReader(result))
+		if err != nil {
+			return err
+		}
+		return nil
 	}
 
-	result, err := json.Marshal(o)
-	if err != nil {
-		return err
-	}
-	return o.sess.Upload(o.Key, bytes.NewReader(result))
 }
 
 type Extent struct {
-	Key    ObjectKey `json:"key"`
-	update bool
-	body   []byte // call Fill() to use this
-	sess   *Session
+	Key   ObjectKey `json:"key"`
+	body  []byte    // call Fill() to use this
+	dirty bool
+	sess  *Session
+}
+
+func (e *Extent) CurrentKey() ObjectKey {
+	return fmt.Sprintf("%x", sha256.Sum256(e.body))
+}
+
+func (e *Extent) Fill() error {
+	body, err := e.sess.Download(e.Key)
+	if err != nil {
+		return err
+	}
+	e.body = body
+	return nil
 }
 
 type SymLink struct {

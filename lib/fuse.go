@@ -80,7 +80,7 @@ func (f *FileSystem) Open(name string, flags uint32, context *fuse.Context) (fil
 		return nil, fuse.ENOENT
 	}
 
-	return &OpenedFile{file: node}, fuse.OK
+	return NewOpenedFile(node), fuse.OK
 }
 
 func (f *FileSystem) getParent(name string) (*Directory, fuse.Status) {
@@ -207,7 +207,7 @@ func (f *FileSystem) Create(name string, flags uint32, mode uint32, context *fus
 	if err != nil {
 		return nil, fuse.EIO
 	}
-	return &OpenedFile{file: file}, fuse.OK
+	return NewOpenedFile(file), fuse.OK
 }
 
 func (f *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse.DirEntry, code fuse.Status) {

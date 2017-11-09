@@ -134,11 +134,12 @@ func (s *Session) NewDirectory(key ObjectKey) (*Directory, error) {
 
 func (s *Session) CreateFile(key, parent ObjectKey, mode uint32, context *fuse.Context) *File {
 	return &File{
-		Key:    key,
-		Parent: parent,
-		Meta:   NewMeta(fuse.S_IFREG|mode, context),
-		Extent: make(map[string]Extent, 0),
-		sess:   s,
+		Key:        key,
+		Parent:     parent,
+		Meta:       NewMeta(fuse.S_IFREG|mode, context),
+		ExtentSize: ExtentSize,
+		Extent:     make(map[int64]*Extent, 0),
+		sess:       s,
 	}
 }
 
@@ -153,9 +154,18 @@ func (s *Session) NewFile(key ObjectKey) (*File, error) {
 		return nil, err
 	}
 	node.sess = s
+	for _, e := range node.Extent {
+		e.sess = s
+	}
+
 	return node, nil
 }
-
+func (s *Session) CreateExtent(size int) *Extent {
+	return &Extent{
+		body: make([]byte, size),
+		sess: s,
+	}
+}
 func (s *Session) CreateSymLink(key, parent ObjectKey, linkTo string, context *fuse.Context) *SymLink {
 	return &SymLink{
 		Key:    key,
