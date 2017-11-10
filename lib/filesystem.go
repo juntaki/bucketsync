@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 
 	"github.com/hanwen/go-fuse/fuse"
+	"go.uber.org/zap"
 )
 
 // Meta is common struct for directory, file and symlink
@@ -115,11 +116,16 @@ func (e *Extent) CurrentKey() ObjectKey {
 }
 
 func (e *Extent) Fill() error {
+	if e.dirty || len(e.body) != 0 {
+		e.sess.logger.Error("Fill should be call only if body is empty")
+		return nil
+	}
 	body, err := e.sess.Download(e.Key)
 	if err != nil {
 		return err
 	}
 	e.body = body
+	e.sess.logger.Debug("Fill Extent", zap.Int("body size", len(e.body)))
 	return nil
 }
 

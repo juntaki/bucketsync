@@ -70,7 +70,7 @@ func NewSession(config *Config) (*Session, error) {
 			"",
 		),
 		Logger: aws.Logger(logger),
-		//LogLevel:    aws.LogLevel(aws.LogDebug),
+		//LogLevel: aws.LogLevel(aws.LogDebugWithHTTPBody),
 	})
 
 	bsess := &Session{
@@ -158,9 +158,11 @@ func (s *Session) NewFile(key ObjectKey) (*File, error) {
 		e.sess = s
 	}
 
+	s.logger.Debug("NewFile", zap.String("key", key),
+		zap.Int("extent count", len(node.Extent)))
 	return node, nil
 }
-func (s *Session) CreateExtent(size int) *Extent {
+func (s *Session) CreateExtent(size int64) *Extent {
 	return &Extent{
 		body: make([]byte, size),
 		sess: s,
@@ -321,6 +323,7 @@ func (s *Session) Download(key ObjectKey) ([]byte, error) {
 		return nil, errors.Wrapf(cause, "GetObject failed. key = %s", key)
 	}
 
+	s.logger.Debug("Download", zap.Int("size", len(body)))
 	return body, nil
 
 	// r := bytes.NewReader(body)
