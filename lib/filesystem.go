@@ -44,7 +44,7 @@ func (o *Directory) Save() error {
 	if err != nil {
 		return err
 	}
-	return o.sess.Upload(o.Key, bytes.NewReader(result))
+	return o.sess.UploadWithCache(o.Key, bytes.NewReader(result))
 }
 
 type File struct {
@@ -95,7 +95,7 @@ func (o *File) Save() error {
 		if err != nil {
 			return err
 		}
-		err = o.sess.Upload(o.Key, bytes.NewReader(result))
+		err = o.sess.UploadWithCache(o.Key, bytes.NewReader(result))
 		if err != nil {
 			return err
 		}
@@ -142,7 +142,7 @@ func (o *SymLink) Save() error {
 	if err != nil {
 		return err
 	}
-	return o.sess.Upload(o.Key, bytes.NewReader(result))
+	return o.sess.UploadWithCache(o.Key, bytes.NewReader(result))
 }
 
 func NewMeta(mode uint32, context *fuse.Context) Meta {

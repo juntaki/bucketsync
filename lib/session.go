@@ -38,10 +38,33 @@ func (c *Config) validate() bool {
 	return true
 }
 
+type Cache struct {
+	cache map[ObjectKey][]byte
+}
+
+func NewCache() *Cache {
+	return &Cache{
+		cache: make(map[ObjectKey][]byte),
+	}
+}
+
+func (c *Cache) set(k ObjectKey, d []byte) {
+	c.cache[k] = d
+}
+
+func (c *Cache) get(k ObjectKey) []byte {
+	return c.cache[k]
+}
+
+func (c *Cache) invalidate(k ObjectKey) {
+	delete(c.cache, k)
+}
+
 type Session struct {
 	svc    *s3.S3
 	config *Config
 	logger *Logger
+	cache  *Cache
 }
 
 func (s *Session) RootKey() ObjectKey {
@@ -77,6 +100,7 @@ func NewSession(config *Config) (*Session, error) {
 		svc:    svc,
 		config: config,
 		logger: logger,
+		cache:  NewCache(),
 	}
 
 	if !bsess.IsExist(bsess.RootKey()) {
@@ -119,7 +143,7 @@ func (s *Session) CreateDirectory(key, parent ObjectKey, mode uint32, context *f
 }
 
 func (s *Session) NewDirectory(key ObjectKey) (*Directory, error) {
-	obj, err := s.Download(key)
+	obj, err := s.DownloadWithCache(key)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +168,7 @@ func (s *Session) CreateFile(key, parent ObjectKey, mode uint32, context *fuse.C
 }
 
 func (s *Session) NewFile(key ObjectKey) (*File, error) {
-	obj, err := s.Download(key)
+	obj, err := s.DownloadWithCache(key)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +203,7 @@ func (s *Session) CreateSymLink(key, parent ObjectKey, linkTo string, context *f
 }
 
 func (s *Session) NewSymLink(key ObjectKey) (*SymLink, error) {
-	obj, err := s.Download(key)
+	obj, err := s.DownloadWithCache(key)
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +217,7 @@ func (s *Session) NewSymLink(key ObjectKey) (*SymLink, error) {
 }
 
 func (s *Session) NewNode(key ObjectKey) (*Node, error) {
-	obj, err := s.Download(key)
+	obj, err := s.DownloadWithCache(key)
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +232,7 @@ func (s *Session) NewNode(key ObjectKey) (*Node, error) {
 
 // NewNode returns Directory, File or Symlink
 func (s *Session) NewTypedNode(key ObjectKey) (interface{}, error) {
-	obj, err := s.Download(key)
+	obj, err := s.DownloadWithCache(key)
 	if err != nil {
 		return nil, err
 	}
@@ -301,6 +325,19 @@ func (s *Session) PathWalk(relPath string) (key ObjectKey, err error) {
 // 	return cipher.StreamWriter{S: stream, W: out}, nil
 // }
 
+func (s *Session) DownloadWithCache(key ObjectKey) ([]byte, error) {
+	cached := s.cache.get(key)
+	if cached != nil {
+		return cached, nil
+	}
+	new, err := s.Download(key)
+	if err != nil {
+		return nil, err
+	}
+	s.cache.set(key, new)
+	return new, nil
+}
+
 func (s *Session) Download(key ObjectKey) ([]byte, error) {
 	s.logger.Info("Download", zap.String("key", key))
 	paramsGet := &s3.GetObjectInput{
@@ -338,6 +375,11 @@ func (s *Session) Download(key ObjectKey) ([]byte, error) {
 	// }
 
 	// return binaryObject(gar), nil
+}
+
+func (s *Session) UploadWithCache(key ObjectKey, value io.ReadSeeker) error {
+	s.cache.invalidate(key)
+	return s.Upload(key, value)
 }
 
 func (s *Session) Upload(key ObjectKey, value io.ReadSeeker) error {
