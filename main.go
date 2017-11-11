@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime/pprof"
 
 	"io/ioutil"
 
@@ -13,7 +15,6 @@ import (
 
 	"strconv"
 
-	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 	bucketsync "github.com/juntaki/bucketsync/lib"
 	"github.com/urfave/cli"
@@ -192,6 +193,14 @@ func config(cli *cli.Context) error {
 }
 
 func mount(cli *cli.Context) error {
+	cpuprofile := "cpu.profile"
+	f, err := os.Create(cpuprofile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	pprof.StartCPUProfile(f)
+	defer pprof.StopCPUProfile()
+
 	config, err := readConfig()
 	if err != nil {
 		return err
@@ -224,10 +233,16 @@ func mount(cli *cli.Context) error {
 	// unmount
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
-	go func(s *fuse.Server) {
-		<-c
-		s.Unmount()
-	}(s)
+	go func() {
+		for {
+			<-c
+			err := s.Unmount()
+			if err == nil {
+				break
+			}
+			log.Print("unmount failed: ", err)
+		}
+	}()
 
 	s.Serve()
 	return nil
