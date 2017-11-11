@@ -2,8 +2,6 @@ package bucketsync
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"fmt"
 	"sync"
 	"time"
 
@@ -112,12 +110,12 @@ type Extent struct {
 }
 
 func (e *Extent) CurrentKey() ObjectKey {
-	return fmt.Sprintf("%x", sha256.Sum256(e.body))
+	return e.sess.KeyGen(e.body)
 }
 
 func (e *Extent) Fill() error {
 	if e.dirty || len(e.body) != 0 {
-		e.sess.logger.Error("Fill should be call only if body is empty")
+		e.sess.logger.Debug("Already filled")
 		return nil
 	}
 	body, err := e.sess.Download(e.Key)

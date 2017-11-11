@@ -1,7 +1,6 @@
 package bucketsync
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -20,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/pkg/errors"
+	"github.com/spaolacci/murmur3"
 	"go.uber.org/zap"
 )
 
@@ -67,8 +67,12 @@ type Session struct {
 	cache  *Cache
 }
 
+func (s *Session) KeyGen(object []byte) ObjectKey {
+	return fmt.Sprintf("%x", murmur3.Sum64(object))
+}
+
 func (s *Session) RootKey() ObjectKey {
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(s.config.Password)))
+	return s.KeyGen([]byte(s.config.Password))
 }
 
 func NewSession(config *Config) (*Session, error) {
