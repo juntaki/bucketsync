@@ -42,7 +42,7 @@ func (o *Directory) Save() error {
 	if err != nil {
 		return err
 	}
-	return o.sess.UploadWithCache(o.Key, bytes.NewReader(result))
+	return o.sess.s3.UploadWithCache(o.Key, bytes.NewReader(result))
 }
 
 type File struct {
@@ -67,11 +67,11 @@ func (o *File) Save() error {
 				return
 			}
 			key := e.CurrentKey()
-			if o.sess.IsExist(key) {
+			if o.sess.s3.IsExist(key) {
 				wg.Done()
 				return
 			}
-			err := o.sess.Upload(key, bytes.NewReader(e.body))
+			err := o.sess.s3.Upload(key, bytes.NewReader(e.body))
 			if err != nil {
 				errc <- err
 				return
@@ -93,7 +93,7 @@ func (o *File) Save() error {
 		if err != nil {
 			return err
 		}
-		err = o.sess.UploadWithCache(o.Key, bytes.NewReader(result))
+		err = o.sess.s3.UploadWithCache(o.Key, bytes.NewReader(result))
 		if err != nil {
 			return err
 		}
@@ -118,7 +118,7 @@ func (e *Extent) Fill() error {
 		e.sess.logger.Debug("Already filled")
 		return nil
 	}
-	body, err := e.sess.Download(e.Key)
+	body, err := e.sess.s3.Download(e.Key)
 	if err != nil {
 		return err
 	}
@@ -140,7 +140,7 @@ func (o *SymLink) Save() error {
 	if err != nil {
 		return err
 	}
-	return o.sess.UploadWithCache(o.Key, bytes.NewReader(result))
+	return o.sess.s3.UploadWithCache(o.Key, bytes.NewReader(result))
 }
 
 func NewMeta(mode uint32, context *fuse.Context) Meta {

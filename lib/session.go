@@ -10,36 +10,16 @@ import (
 
 	"path/filepath"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/pkg/errors"
 	"github.com/spaolacci/murmur3"
 	"go.uber.org/zap"
 )
 
-type Config struct {
-	Bucket        string `yaml:"bucket"`
-	Region        string `yaml:"region"`
-	AccessKey     string `yaml:"access_key"`
-	SecretKey     string `yaml:"secret_key"`
-	Password      string `yaml:"password"`
-	Logging       string `yaml:"logging"`
-	LogOutputPath string `yaml:"log_output_path"`
-}
-
-func (c *Config) validate() bool {
-	// TODO
-	return true
-}
-
 type Session struct {
-	svc    *s3.S3
+	s3     *S3Session
 	config *Config
 	logger *Logger
-	cache  *Cache
 }
 
 func (s *Session) KeyGen(object []byte) ObjectKey {
@@ -60,29 +40,18 @@ func NewSession(config *Config) (*Session, error) {
 		return nil, err
 	}
 
-	sess, err := session.NewSession()
+	s3Session, err := NewS3Session(config, logger)
 	if err != nil {
 		return nil, err
 	}
-	svc := s3.New(sess, &aws.Config{
-		Region: aws.String(config.Region),
-		Credentials: credentials.NewStaticCredentials(
-			config.AccessKey,
-			config.SecretKey,
-			"",
-		),
-		Logger: aws.Logger(logger),
-		//LogLevel: aws.LogLevel(aws.LogDebugWithHTTPBody),
-	})
 
 	bsess := &Session{
-		svc:    svc,
+		s3:     s3Session,
 		config: config,
 		logger: logger,
-		cache:  NewCache(),
 	}
 
-	if !bsess.IsExist(bsess.RootKey()) {
+	if !bsess.s3.IsExist(bsess.RootKey()) {
 		logger.Error("root key is not found", zap.Error(err))
 
 		root := &Directory{
@@ -122,7 +91,7 @@ func (s *Session) CreateDirectory(key, parent ObjectKey, mode uint32, context *f
 }
 
 func (s *Session) NewDirectory(key ObjectKey) (*Directory, error) {
-	obj, err := s.DownloadWithCache(key)
+	obj, err := s.s3.DownloadWithCache(key)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +116,7 @@ func (s *Session) CreateFile(key, parent ObjectKey, mode uint32, context *fuse.C
 }
 
 func (s *Session) NewFile(key ObjectKey) (*File, error) {
-	obj, err := s.DownloadWithCache(key)
+	obj, err := s.s3.DownloadWithCache(key)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +151,7 @@ func (s *Session) CreateSymLink(key, parent ObjectKey, linkTo string, context *f
 }
 
 func (s *Session) NewSymLink(key ObjectKey) (*SymLink, error) {
-	obj, err := s.DownloadWithCache(key)
+	obj, err := s.s3.DownloadWithCache(key)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +165,7 @@ func (s *Session) NewSymLink(key ObjectKey) (*SymLink, error) {
 }
 
 func (s *Session) NewNode(key ObjectKey) (*Node, error) {
-	obj, err := s.DownloadWithCache(key)
+	obj, err := s.s3.DownloadWithCache(key)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +180,7 @@ func (s *Session) NewNode(key ObjectKey) (*Node, error) {
 
 // NewNode returns Directory, File or Symlink
 func (s *Session) NewTypedNode(key ObjectKey) (interface{}, error) {
-	obj, err := s.DownloadWithCache(key)
+	obj, err := s.s3.DownloadWithCache(key)
 	if err != nil {
 		return nil, err
 	}

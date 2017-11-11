@@ -15,7 +15,8 @@ import (
 
 type FileSystem struct {
 	pathfs.FileSystem
-	Sess *Session
+	Sess   *Session
+	logger *Logger
 }
 
 func NewFileSystem(config *Config) *pathfs.PathNodeFs {
@@ -27,6 +28,7 @@ func NewFileSystem(config *Config) *pathfs.PathNodeFs {
 	fs := &FileSystem{
 		FileSystem: pathfs.NewDefaultFileSystem(),
 		Sess:       sess,
+		logger:     sess.logger,
 	}
 	return pathfs.NewPathNodeFs(fs, nil)
 }
@@ -42,7 +44,7 @@ func NewObjectKey() ObjectKey {
 }
 
 func (f *FileSystem) GetAttr(name string, context *fuse.Context) (*fuse.Attr, fuse.Status) {
-	f.Sess.logger.Info("GetAttr", zap.String("name", name))
+	f.logger.Info("GetAttr", zap.String("name", name))
 
 	key, err := f.Sess.PathWalk(name)
 	if err != nil {
@@ -69,7 +71,7 @@ func (f *FileSystem) GetAttr(name string, context *fuse.Context) (*fuse.Attr, fu
 }
 
 func (f *FileSystem) Open(name string, flags uint32, context *fuse.Context) (file nodefs.File, code fuse.Status) {
-	f.Sess.logger.Info("Open", zap.String("name", name))
+	f.logger.Info("Open", zap.String("name", name))
 	key, err := f.Sess.PathWalk(name)
 	if err != nil {
 		return nil, fuse.ENOENT
@@ -97,7 +99,7 @@ func (f *FileSystem) getParent(name string) (*Directory, fuse.Status) {
 }
 
 func (f *FileSystem) Rename(oldName string, newName string, context *fuse.Context) (code fuse.Status) {
-	f.Sess.logger.Info("Rename", zap.String("oldName", oldName), zap.String("newName", newName))
+	f.logger.Info("Rename", zap.String("oldName", oldName), zap.String("newName", newName))
 
 	// Get old dir
 	dirOld, status := f.getParent(oldName)
@@ -128,7 +130,7 @@ func (f *FileSystem) Rename(oldName string, newName string, context *fuse.Contex
 }
 
 func (f *FileSystem) Mkdir(name string, mode uint32, context *fuse.Context) fuse.Status {
-	f.Sess.logger.Info("Mkdir", zap.String("name", name))
+	f.logger.Info("Mkdir", zap.String("name", name))
 
 	dir, status := f.getParent(name)
 	if status != fuse.OK {
@@ -154,7 +156,7 @@ func (f *FileSystem) Mkdir(name string, mode uint32, context *fuse.Context) fuse
 }
 
 func (f *FileSystem) Symlink(value string, linkName string, context *fuse.Context) (code fuse.Status) {
-	f.Sess.logger.Info("Symlink",
+	f.logger.Info("Symlink",
 		zap.String("value", value),
 		zap.String("linkName", linkName))
 
@@ -182,7 +184,7 @@ func (f *FileSystem) Symlink(value string, linkName string, context *fuse.Contex
 
 func (f *FileSystem) Create(name string, flags uint32, mode uint32, context *fuse.Context) (nodefs.File, fuse.Status) {
 	// TODO: flags??
-	f.Sess.logger.Info("Create",
+	f.logger.Info("Create",
 		zap.String("name", name),
 		zap.Uint32("flags", flags),
 		zap.Uint32("mode", mode),
@@ -211,7 +213,7 @@ func (f *FileSystem) Create(name string, flags uint32, mode uint32, context *fus
 }
 
 func (f *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse.DirEntry, code fuse.Status) {
-	f.Sess.logger.Info("OpenDir", zap.String("name", name))
+	f.logger.Info("OpenDir", zap.String("name", name))
 	key, err := f.Sess.PathWalk(name)
 	if err != nil {
 		return nil, fuse.ENOENT
@@ -241,7 +243,7 @@ func (f *FileSystem) OnUnmount() {
 }
 
 func (f *FileSystem) Chmod(name string, mode uint32, context *fuse.Context) (code fuse.Status) {
-	f.Sess.logger.Info("Chmod", zap.String("name", name))
+	f.logger.Info("Chmod", zap.String("name", name))
 	key, err := f.Sess.PathWalk(name)
 	if err != nil {
 		return fuse.ENOENT
@@ -273,7 +275,7 @@ func (f *FileSystem) Chmod(name string, mode uint32, context *fuse.Context) (cod
 }
 
 func (f *FileSystem) Chown(name string, uid uint32, gid uint32, context *fuse.Context) (code fuse.Status) {
-	f.Sess.logger.Info("Chown", zap.String("name", name))
+	f.logger.Info("Chown", zap.String("name", name))
 	key, err := f.Sess.PathWalk(name)
 	if err != nil {
 		return fuse.ENOENT
@@ -308,7 +310,7 @@ func (f *FileSystem) Chown(name string, uid uint32, gid uint32, context *fuse.Co
 }
 
 func (f *FileSystem) Utimens(name string, Atime *time.Time, Mtime *time.Time, context *fuse.Context) (code fuse.Status) {
-	f.Sess.logger.Info("Utimens", zap.String("name", name))
+	f.logger.Info("Utimens", zap.String("name", name))
 	key, err := f.Sess.PathWalk(name)
 	if err != nil {
 		return fuse.ENOENT
@@ -344,7 +346,7 @@ func (f *FileSystem) Utimens(name string, Atime *time.Time, Mtime *time.Time, co
 }
 
 func (f *FileSystem) Access(name string, mode uint32, context *fuse.Context) (code fuse.Status) {
-	f.Sess.logger.Info("Access",
+	f.logger.Info("Access",
 		zap.String("name", name),
 		zap.Uint32("mode", mode),
 	)
@@ -354,14 +356,14 @@ func (f *FileSystem) Access(name string, mode uint32, context *fuse.Context) (co
 		return fuse.ENOENT
 	}
 
-	if f.Sess.IsExist(key) {
+	if f.Sess.s3.IsExist(key) {
 		return fuse.OK
 	}
 	return fuse.ENOENT
 }
 
 func (f *FileSystem) Truncate(name string, size uint64, context *fuse.Context) (code fuse.Status) {
-	f.Sess.logger.Info("Truncate", zap.String("name", name))
+	f.logger.Info("Truncate", zap.String("name", name))
 	key, err := f.Sess.PathWalk(name)
 	if err != nil {
 		return fuse.ENOENT
@@ -381,7 +383,7 @@ func (f *FileSystem) Truncate(name string, size uint64, context *fuse.Context) (
 }
 
 func (f *FileSystem) Readlink(name string, context *fuse.Context) (string, fuse.Status) {
-	f.Sess.logger.Info("Readlink", zap.String("name", name))
+	f.logger.Info("Readlink", zap.String("name", name))
 	key, err := f.Sess.PathWalk(name)
 	if err != nil {
 		return "", fuse.ENOENT
@@ -401,7 +403,7 @@ func (f *FileSystem) Rmdir(name string, context *fuse.Context) (code fuse.Status
 }
 
 func (f *FileSystem) Unlink(name string, context *fuse.Context) (code fuse.Status) {
-	f.Sess.logger.Info("Unlink", zap.String("name", name))
+	f.logger.Info("Unlink", zap.String("name", name))
 	dir, status := f.getParent(name)
 	if status != fuse.OK {
 		return status
