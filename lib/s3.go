@@ -20,10 +20,8 @@ type S3Session struct {
 }
 
 func NewS3Session(config *Config, logger *Logger) (*S3Session, error) {
-	sess, err := session.NewSession()
-	if err != nil {
-		return nil, err
-	}
+	sess := session.Must(session.NewSession())
+
 	svc := s3.New(sess, &aws.Config{
 		Region: aws.String(config.Region),
 		Credentials: credentials.NewStaticCredentials(
@@ -57,6 +55,11 @@ func (s *S3Session) DownloadWithCache(key ObjectKey) ([]byte, error) {
 
 func (s *S3Session) Download(key ObjectKey) ([]byte, error) {
 	s.logger.Info("Download", zap.String("key", key))
+
+	if key == "" {
+		return nil, errors.New("Key shouldn't be empty")
+	}
+
 	paramsGet := &s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(key),

@@ -48,11 +48,13 @@ func (f *FileSystem) GetAttr(name string, context *fuse.Context) (*fuse.Attr, fu
 
 	key, err := f.Sess.PathWalk(name)
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return nil, fuse.ENOENT
 	}
 
 	node, err := f.Sess.NewNode(key)
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return nil, fuse.ENOENT
 	}
 
@@ -74,11 +76,13 @@ func (f *FileSystem) Open(name string, flags uint32, context *fuse.Context) (fil
 	f.logger.Info("Open", zap.String("name", name))
 	key, err := f.Sess.PathWalk(name)
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return nil, fuse.ENOENT
 	}
 
 	node, err := f.Sess.NewFile(key)
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return nil, fuse.ENOENT
 	}
 
@@ -89,6 +93,7 @@ func (f *FileSystem) getParent(name string) (*Directory, fuse.Status) {
 	parent := filepath.Dir(name)
 	key, err := f.Sess.PathWalk(parent)
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return nil, fuse.ENOENT
 	}
 	dir, err := f.Sess.NewDirectory(key)
@@ -101,30 +106,54 @@ func (f *FileSystem) getParent(name string) (*Directory, fuse.Status) {
 func (f *FileSystem) Rename(oldName string, newName string, context *fuse.Context) (code fuse.Status) {
 	f.logger.Info("Rename", zap.String("oldName", oldName), zap.String("newName", newName))
 
-	// Get old dir
-	dirOld, status := f.getParent(oldName)
-	if status != fuse.OK {
-		return status
-	}
+	oldParentPath := filepath.Dir(oldName)
+	newParentPath := filepath.Dir(newName)
 
-	// Get new dir
-	dirNew, status := f.getParent(newName)
-	if status != fuse.OK {
-		return status
-	}
+	if oldParentPath == newParentPath {
+		// Get parent dir
+		dir, status := f.getParent(oldName) // got the same as newName
+		if status != fuse.OK {
+			return status
+		}
 
-	// Rename
-	dirNew.FileMeta[filepath.Base(newName)] = dirOld.FileMeta[filepath.Base(newName)]
-	delete(dirOld.FileMeta, filepath.Base(oldName))
+		// Rename
+		dir.FileMeta[filepath.Base(newName)] = dir.FileMeta[filepath.Base(oldName)]
+		delete(dir.FileMeta, filepath.Base(oldName))
 
-	// Save
-	err := dirNew.Save()
-	if err != nil {
-		return fuse.EIO
-	}
-	err = dirOld.Save()
-	if err != nil {
-		return fuse.EIO
+		// Save
+		err := dir.Save()
+		if err != nil {
+			f.logger.Debug("fuse error", zap.Error(err))
+			return fuse.EIO
+		}
+	} else {
+		// Get old dir
+		dirOld, status := f.getParent(oldName)
+		if status != fuse.OK {
+			return status
+		}
+
+		// Get new dir
+		dirNew, status := f.getParent(newName)
+		if status != fuse.OK {
+			return status
+		}
+
+		// Rename
+		dirNew.FileMeta[filepath.Base(newName)] = dirOld.FileMeta[filepath.Base(oldName)]
+		delete(dirOld.FileMeta, filepath.Base(oldName))
+
+		// Save
+		err := dirNew.Save()
+		if err != nil {
+			f.logger.Debug("fuse error", zap.Error(err))
+			return fuse.EIO
+		}
+		err = dirOld.Save()
+		if err != nil {
+			f.logger.Debug("fuse error", zap.Error(err))
+			return fuse.EIO
+		}
 	}
 	return fuse.OK
 }
@@ -146,10 +175,12 @@ func (f *FileSystem) Mkdir(name string, mode uint32, context *fuse.Context) fuse
 	// Save
 	err := newDir.Save()
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return fuse.EIO
 	}
 	err = dir.Save()
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return fuse.EIO
 	}
 	return fuse.OK
@@ -173,10 +204,12 @@ func (f *FileSystem) Symlink(value string, linkName string, context *fuse.Contex
 	// Save
 	err := symlink.Save()
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return fuse.EIO
 	}
 	err = dir.Save()
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return fuse.EIO
 	}
 	return fuse.OK
@@ -203,10 +236,12 @@ func (f *FileSystem) Create(name string, flags uint32, mode uint32, context *fus
 
 	err := file.Save()
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return nil, fuse.EIO
 	}
 	err = dir.Save()
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return nil, fuse.EIO
 	}
 	return NewOpenedFile(file), fuse.OK
@@ -216,11 +251,13 @@ func (f *FileSystem) OpenDir(name string, context *fuse.Context) (stream []fuse.
 	f.logger.Info("OpenDir", zap.String("name", name))
 	key, err := f.Sess.PathWalk(name)
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return nil, fuse.ENOENT
 	}
 
 	dir, err := f.Sess.NewDirectory(key)
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return nil, fuse.ENOENT
 	}
 
@@ -239,18 +276,20 @@ func (f *FileSystem) OnMount(nodeFs *pathfs.PathNodeFs) {
 }
 
 func (f *FileSystem) OnUnmount() {
-	// TODO: close connection
+	f.logger.Info("Unmount")
 }
 
 func (f *FileSystem) Chmod(name string, mode uint32, context *fuse.Context) (code fuse.Status) {
 	f.logger.Info("Chmod", zap.String("name", name))
 	key, err := f.Sess.PathWalk(name)
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return fuse.ENOENT
 	}
 
 	node, err := f.Sess.NewTypedNode(key)
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return fuse.ENOENT
 	}
 
@@ -278,11 +317,13 @@ func (f *FileSystem) Chown(name string, uid uint32, gid uint32, context *fuse.Co
 	f.logger.Info("Chown", zap.String("name", name))
 	key, err := f.Sess.PathWalk(name)
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return fuse.ENOENT
 	}
 
 	node, err := f.Sess.NewTypedNode(key)
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return fuse.ENOENT
 	}
 
@@ -304,6 +345,7 @@ func (f *FileSystem) Chown(name string, uid uint32, gid uint32, context *fuse.Co
 		err = typed.Save()
 	}
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return fuse.EIO
 	}
 	return fuse.OK
@@ -313,11 +355,13 @@ func (f *FileSystem) Utimens(name string, Atime *time.Time, Mtime *time.Time, co
 	f.logger.Info("Utimens", zap.String("name", name))
 	key, err := f.Sess.PathWalk(name)
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return fuse.ENOENT
 	}
 
 	node, err := f.Sess.NewTypedNode(key)
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return fuse.ENOENT
 	}
 
@@ -353,12 +397,14 @@ func (f *FileSystem) Access(name string, mode uint32, context *fuse.Context) (co
 
 	key, err := f.Sess.PathWalk(name)
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return fuse.ENOENT
 	}
 
 	if f.Sess.s3.IsExist(key) {
 		return fuse.OK
 	}
+	f.logger.Debug("fuse error", zap.Error(err))
 	return fuse.ENOENT
 }
 
@@ -366,17 +412,20 @@ func (f *FileSystem) Truncate(name string, size uint64, context *fuse.Context) (
 	f.logger.Info("Truncate", zap.String("name", name))
 	key, err := f.Sess.PathWalk(name)
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return fuse.ENOENT
 	}
 
 	node, err := f.Sess.NewFile(key)
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return fuse.ENOENT
 	}
 
 	node.Meta.Size = int64(size)
 	err = node.Save()
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return fuse.EIO
 	}
 	return fuse.OK
@@ -386,11 +435,13 @@ func (f *FileSystem) Readlink(name string, context *fuse.Context) (string, fuse.
 	f.logger.Info("Readlink", zap.String("name", name))
 	key, err := f.Sess.PathWalk(name)
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return "", fuse.ENOENT
 	}
 
 	node, err := f.Sess.NewSymLink(key)
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return "", fuse.ENOENT
 	}
 
@@ -398,7 +449,6 @@ func (f *FileSystem) Readlink(name string, context *fuse.Context) (string, fuse.
 }
 
 func (f *FileSystem) Rmdir(name string, context *fuse.Context) (code fuse.Status) {
-
 	return f.Unlink(name, context)
 }
 
@@ -413,6 +463,7 @@ func (f *FileSystem) Unlink(name string, context *fuse.Context) (code fuse.Statu
 
 	err := dir.Save()
 	if err != nil {
+		f.logger.Debug("fuse error", zap.Error(err))
 		return fuse.EIO
 	}
 

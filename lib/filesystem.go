@@ -24,14 +24,12 @@ type Meta struct {
 
 // Node is common part of Directory, File, and SymLink
 type Node struct {
-	Key    ObjectKey `json:"key"`
-	Parent ObjectKey `json:"parent"`
-	Meta   Meta      `json:"meta"`
+	Key  ObjectKey `json:"key"`
+	Meta Meta      `json:"meta"`
 }
 
 type Directory struct {
 	Key      ObjectKey            `json:"key"`
-	Parent   ObjectKey            `json:"parent"`
 	Meta     Meta                 `json:"meta"`
 	FileMeta map[string]ObjectKey `json:"children"`
 	sess     *Session
@@ -47,7 +45,6 @@ func (o *Directory) Save() error {
 
 type File struct {
 	Key        ObjectKey         `json:"key"`
-	Parent     ObjectKey         `json:"parent"`
 	Meta       Meta              `json:"meta"`
 	ExtentSize int64             `json:"extent_size"`
 	Extent     map[int64]*Extent `json:"extent"`
@@ -129,7 +126,6 @@ func (e *Extent) Fill() error {
 
 type SymLink struct {
 	Key    ObjectKey `json:"key"`
-	Parent ObjectKey `json:"parent"`
 	Meta   Meta      `json:"meta"`
 	LinkTo string    `json:"linkto"`
 	sess   *Session

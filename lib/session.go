@@ -55,8 +55,7 @@ func NewSession(config *Config) (*Session, error) {
 		logger.Error("root key is not found", zap.Error(err))
 
 		root := &Directory{
-			Key:    bsess.RootKey(),
-			Parent: bsess.RootKey(),
+			Key: bsess.RootKey(),
 			Meta: Meta{
 				Mode:  fuse.S_IFDIR | 0755,
 				Size:  0,
@@ -83,7 +82,6 @@ func NewSession(config *Config) (*Session, error) {
 func (s *Session) CreateDirectory(key, parent ObjectKey, mode uint32, context *fuse.Context) *Directory {
 	return &Directory{
 		Key:      key,
-		Parent:   parent,
 		Meta:     NewMeta(fuse.S_IFDIR|mode, context),
 		FileMeta: make(map[string]ObjectKey, 0),
 		sess:     s,
@@ -107,7 +105,6 @@ func (s *Session) NewDirectory(key ObjectKey) (*Directory, error) {
 func (s *Session) CreateFile(key, parent ObjectKey, mode uint32, context *fuse.Context) *File {
 	return &File{
 		Key:        key,
-		Parent:     parent,
 		Meta:       NewMeta(fuse.S_IFREG|mode, context),
 		ExtentSize: ExtentSize,
 		Extent:     make(map[int64]*Extent, 0),
@@ -143,7 +140,6 @@ func (s *Session) CreateExtent(size int64) *Extent {
 func (s *Session) CreateSymLink(key, parent ObjectKey, linkTo string, context *fuse.Context) *SymLink {
 	return &SymLink{
 		Key:    key,
-		Parent: parent,
 		Meta:   NewMeta(fuse.S_IFLNK, context),
 		LinkTo: linkTo,
 		sess:   s,
@@ -217,7 +213,8 @@ func (s *Session) PathWalk(relPath string) (key ObjectKey, err error) {
 
 	// root
 	if relPath == "." || relPath == "" {
-		return
+		s.logger.Info("PathWalk finished", zap.String("key", key))
+		return key, nil
 	}
 
 	node, err := s.NewDirectory(key)
@@ -230,7 +227,7 @@ func (s *Session) PathWalk(relPath string) (key ObjectKey, err error) {
 	for i, p := range pathList {
 		var ok bool
 		if key, ok = node.FileMeta[p]; !ok {
-			return "", err
+			return "", errors.New("File not found")
 		}
 
 		if i == len(pathList)-1 { // key points 2:c in example.

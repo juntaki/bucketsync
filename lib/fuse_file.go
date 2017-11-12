@@ -3,6 +3,8 @@ package bucketsync
 import (
 	"bytes"
 	"sync"
+	"syscall"
+	"time"
 
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
@@ -14,6 +16,7 @@ type OpenedFile struct {
 	nodefs.File
 	file  *File
 	dirty bool
+	open  bool
 }
 
 func NewOpenedFile(file *File) *OpenedFile {
@@ -21,6 +24,7 @@ func NewOpenedFile(file *File) *OpenedFile {
 		File:  nodefs.NewDefaultFile(),
 		file:  file,
 		dirty: false,
+		open:  true,
 	}
 }
 
@@ -35,6 +39,10 @@ func (f *OpenedFile) Flush() fuse.Status {
 
 func (f *OpenedFile) Read(dest []byte, off int64) (fuse.ReadResult, fuse.Status) {
 	f.file.sess.logger.Info("Read")
+
+	if off > f.file.Meta.Size {
+		return nil, fuse.ENODATA
+	}
 
 	// Calculate Extent index, offset
 	// example: ExtentSize = 3, off = 8, len(dest) = 8
@@ -109,6 +117,9 @@ func (f *OpenedFile) Write(data []byte, off int64) (written uint32, code fuse.St
 		zap.Int64("offset", off))
 	f.dirty = true
 
+	f.file.sess.logger.Debug("Write/extent", zap.Int64("extentSize", ExtentSize),
+		zap.Int64("file.extentSize", f.file.ExtentSize))
+
 	first := off / f.file.ExtentSize
 	startOffset := off - (first)*f.file.ExtentSize
 	pos := 0
@@ -153,6 +164,7 @@ func (f *OpenedFile) Release() {
 		f.file.Save()
 		f.dirty = false
 	}
+	f.open = false
 }
 
 func (f *OpenedFile) Fsync(flags int) (code fuse.Status) {
@@ -168,6 +180,73 @@ func (f *OpenedFile) String() string {
 	return f.file.Key
 }
 
+func (f *OpenedFile) Truncate(size uint64) fuse.Status {
+	f.file.sess.logger.Info("Truncate", zap.Uint64("size", size))
+	if !f.open {
+		return fuse.EBADF
+	}
+	f.file.Meta.Size = int64(size)
+	return fuse.OK
+}
+
+func (f *OpenedFile) GetAttr(out *fuse.Attr) fuse.Status {
+	f.file.sess.logger.Info("GetAttr")
+	if !f.open {
+		return fuse.EBADF
+	}
+
+	out.Ino = InodeHash(f.file.Key)
+	out.Size = uint64(f.file.Meta.Size)
+	out.Mode = f.file.Meta.Mode
+	out.Nlink = 1
+	out.Owner = fuse.Owner{
+		Uid: f.file.Meta.UID,
+		Gid: f.file.Meta.GID,
+	}
+	out.SetTimes(&f.file.Meta.Atime, &f.file.Meta.Mtime, &f.file.Meta.Ctime)
+	return fuse.OK
+}
+
+func (f *OpenedFile) Chown(uid uint32, gid uint32) fuse.Status {
+	f.file.sess.logger.Info("Chown")
+	if !f.open {
+		return fuse.EBADF
+	}
+	f.file.Meta.UID = uid
+	f.file.Meta.GID = gid
+	f.file.Meta.Ctime = time.Now()
+	return fuse.OK
+}
+
+func (f *OpenedFile) Chmod(perms uint32) fuse.Status {
+	f.file.sess.logger.Info("Chmod")
+	if !f.open {
+		return fuse.EBADF
+	}
+	f.file.Meta.Mode = (f.file.Meta.Mode & syscall.S_IFMT) | perms
+	f.file.Meta.Ctime = time.Now()
+	return fuse.OK
+}
+
+func (f *OpenedFile) Utimens(atime *time.Time, mtime *time.Time) fuse.Status {
+	f.file.sess.logger.Info("Utimens")
+	if !f.open {
+		return fuse.EBADF
+	}
+	f.file.Meta.Atime = *atime
+	f.file.Meta.Mtime = *mtime
+	f.file.Meta.Ctime = time.Now()
+	return fuse.OK
+}
+
+func (f *OpenedFile) Allocate(off uint64, size uint64, mode uint32) (code fuse.Status) {
+	f.file.sess.logger.Info("Allocate")
+	if !f.open {
+		return fuse.EBADF
+	}
+	return fuse.OK
+}
+
 type ReadResult struct {
 	content []byte
 	size    int
@@ -176,6 +255,7 @@ type ReadResult struct {
 func (r *ReadResult) Bytes(buf []byte) ([]byte, fuse.Status) {
 	return r.content, fuse.OK
 }
+
 func (r *ReadResult) Size() int {
 	return r.size
 }
