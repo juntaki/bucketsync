@@ -75,7 +75,7 @@ func NewSession(config *Config) (*Session, error) {
 		}
 	}
 
-	logger.Info("New session created", zap.String("Root UUID", bsess.RootKey()))
+	logger.Debug("New session created", zap.String("Root UUID", bsess.RootKey()))
 	return bsess, nil
 }
 
@@ -208,12 +208,12 @@ func (s *Session) NewTypedNode(key ObjectKey) (interface{}, error) {
 }
 
 func (s *Session) PathWalk(relPath string) (key ObjectKey, err error) {
-	s.logger.Info("PathWalk", zap.String("relPath", relPath))
+	s.logger.Debug("PathWalk", zap.String("relPath", relPath))
 	key = s.RootKey()
 
 	// root
 	if relPath == "." || relPath == "" {
-		s.logger.Info("PathWalk finished", zap.String("key", key))
+		s.logger.Debug("PathWalk finished", zap.String("key", key))
 		return key, nil
 	}
 
@@ -240,6 +240,6 @@ func (s *Session) PathWalk(relPath string) (key ObjectKey, err error) {
 		}
 	}
 
-	s.logger.Info("PathWalk finished", zap.String("key", key))
+	s.logger.Debug("PathWalk finished", zap.String("key", key))
 	return
 }

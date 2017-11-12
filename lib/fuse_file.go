@@ -29,7 +29,7 @@ func NewOpenedFile(file *File) *OpenedFile {
 }
 
 func (f *OpenedFile) Flush() fuse.Status {
-	f.file.sess.logger.Info("Flush")
+	f.file.sess.logger.Debug("Flush")
 	if f.dirty {
 		f.file.Save()
 		f.dirty = false
@@ -38,7 +38,7 @@ func (f *OpenedFile) Flush() fuse.Status {
 }
 
 func (f *OpenedFile) Read(dest []byte, off int64) (fuse.ReadResult, fuse.Status) {
-	f.file.sess.logger.Info("Read")
+	f.file.sess.logger.Debug("Read")
 
 	if off > f.file.Meta.Size {
 		return nil, fuse.ENODATA
@@ -113,7 +113,7 @@ func (f *OpenedFile) Read(dest []byte, off int64) (fuse.ReadResult, fuse.Status)
 }
 
 func (f *OpenedFile) Write(data []byte, off int64) (written uint32, code fuse.Status) {
-	f.file.sess.logger.Info("Write", zap.Int("datalen", len(data)),
+	f.file.sess.logger.Debug("Write", zap.Int("datalen", len(data)),
 		zap.Int64("offset", off))
 	f.dirty = true
 
@@ -159,7 +159,7 @@ func (f *OpenedFile) Write(data []byte, off int64) (written uint32, code fuse.St
 }
 
 func (f *OpenedFile) Release() {
-	f.file.sess.logger.Info("Release")
+	f.file.sess.logger.Debug("Release")
 	if f.dirty {
 		f.file.Save()
 		f.dirty = false
@@ -168,7 +168,7 @@ func (f *OpenedFile) Release() {
 }
 
 func (f *OpenedFile) Fsync(flags int) (code fuse.Status) {
-	f.file.sess.logger.Info("Fsync")
+	f.file.sess.logger.Debug("Fsync")
 	if f.dirty {
 		f.file.Save()
 		f.dirty = false
@@ -181,7 +181,7 @@ func (f *OpenedFile) String() string {
 }
 
 func (f *OpenedFile) Truncate(size uint64) fuse.Status {
-	f.file.sess.logger.Info("Truncate", zap.Uint64("size", size))
+	f.file.sess.logger.Debug("Truncate", zap.Uint64("size", size))
 	if !f.open {
 		return fuse.EBADF
 	}
@@ -190,7 +190,7 @@ func (f *OpenedFile) Truncate(size uint64) fuse.Status {
 }
 
 func (f *OpenedFile) GetAttr(out *fuse.Attr) fuse.Status {
-	f.file.sess.logger.Info("GetAttr")
+	f.file.sess.logger.Debug("GetAttr")
 	if !f.open {
 		return fuse.EBADF
 	}
@@ -208,7 +208,7 @@ func (f *OpenedFile) GetAttr(out *fuse.Attr) fuse.Status {
 }
 
 func (f *OpenedFile) Chown(uid uint32, gid uint32) fuse.Status {
-	f.file.sess.logger.Info("Chown")
+	f.file.sess.logger.Debug("Chown")
 	if !f.open {
 		return fuse.EBADF
 	}
@@ -219,7 +219,7 @@ func (f *OpenedFile) Chown(uid uint32, gid uint32) fuse.Status {
 }
 
 func (f *OpenedFile) Chmod(perms uint32) fuse.Status {
-	f.file.sess.logger.Info("Chmod")
+	f.file.sess.logger.Debug("Chmod")
 	if !f.open {
 		return fuse.EBADF
 	}
@@ -229,7 +229,7 @@ func (f *OpenedFile) Chmod(perms uint32) fuse.Status {
 }
 
 func (f *OpenedFile) Utimens(atime *time.Time, mtime *time.Time) fuse.Status {
-	f.file.sess.logger.Info("Utimens")
+	f.file.sess.logger.Debug("Utimens")
 	if !f.open {
 		return fuse.EBADF
 	}
@@ -240,7 +240,7 @@ func (f *OpenedFile) Utimens(atime *time.Time, mtime *time.Time) fuse.Status {
 }
 
 func (f *OpenedFile) Allocate(off uint64, size uint64, mode uint32) (code fuse.Status) {
-	f.file.sess.logger.Info("Allocate")
+	f.file.sess.logger.Debug("Allocate")
 	if !f.open {
 		return fuse.EBADF
 	}

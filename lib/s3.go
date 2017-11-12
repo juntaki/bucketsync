@@ -54,7 +54,7 @@ func (s *S3Session) DownloadWithCache(key ObjectKey) ([]byte, error) {
 }
 
 func (s *S3Session) Download(key ObjectKey) ([]byte, error) {
-	s.logger.Info("Download", zap.String("key", key))
+	s.logger.Debug("Download", zap.String("key", key))
 
 	if key == "" {
 		return nil, errors.New("Key shouldn't be empty")
@@ -85,7 +85,7 @@ func (s *S3Session) UploadWithCache(key ObjectKey, value io.ReadSeeker) error {
 }
 
 func (s *S3Session) Upload(key ObjectKey, value io.ReadSeeker) error {
-	s.logger.Info("Upload", zap.String("key", key))
+	s.logger.Debug("Upload", zap.String("key", key))
 
 	paramsPut := &s3.PutObjectInput{
 		Bucket: aws.String(s.bucket),
