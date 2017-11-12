@@ -11,22 +11,27 @@ type Logger struct {
 }
 
 func NewLogger(outputPath string, debug bool) (logger *Logger, err error) {
-	config := zap.NewDevelopmentConfig()
+	var config zap.Config
+	if debug {
+		config = zap.NewDevelopmentConfig()
+	} else {
+		config = zap.NewProductionConfig()
+	}
 	config.OutputPaths = []string{outputPath}
-	config.Development = debug
-
 	zapLogger, err := config.Build()
 	if err != nil {
 		return nil, err
 	}
 
-	zap.RedirectStdLog(zapLogger)
+	err = zap.RedirectStdLogAt(zapLogger, zap.DebugLevel)
+	if err != nil {
+		return nil, err
+	}
 
 	logger = &Logger{
 		Logger: zapLogger,
 	}
 
-	//log.SetOutput(logger)
 	return logger, nil
 }
 
