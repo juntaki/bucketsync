@@ -14,7 +14,7 @@ import (
 
 type S3Session struct {
 	svc    *s3.S3
-	cache  *Cache
+	cache  *cache
 	logger *Logger
 	bucket string
 }
@@ -34,22 +34,22 @@ func NewS3Session(config *Config, logger *Logger) (*S3Session, error) {
 	})
 
 	return &S3Session{svc: svc,
-		cache:  NewCache(),
+		cache:  NewCache(10),
 		logger: logger,
 		bucket: config.Bucket,
 	}, nil
 }
 
 func (s *S3Session) DownloadWithCache(key ObjectKey) ([]byte, error) {
-	cached := s.cache.get(key)
-	if cached != nil {
+	cached, err := s.cache.Get(key)
+	if err == nil {
 		return cached, nil
 	}
 	new, err := s.Download(key)
 	if err != nil {
 		return nil, err
 	}
-	s.cache.set(key, new)
+	s.cache.Add(key, new)
 	return new, nil
 }
 
@@ -80,7 +80,13 @@ func (s *S3Session) Download(key ObjectKey) ([]byte, error) {
 }
 
 func (s *S3Session) UploadWithCache(key ObjectKey, value io.ReadSeeker) error {
-	s.cache.invalidate(key)
+	data, err := ioutil.ReadAll(value)
+	if err != nil {
+		return err
+	}
+	s.cache.Add(key, data)
+	value.Seek(0, 0)
+
 	return s.Upload(key, value)
 }
 

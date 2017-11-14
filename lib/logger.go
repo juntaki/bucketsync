@@ -23,7 +23,7 @@ func NewLogger(outputPath string, debug bool) (logger *Logger, err error) {
 		return nil, err
 	}
 
-	err = zap.RedirectStdLogAt(zapLogger, zap.DebugLevel)
+	_, err = zap.RedirectStdLogAt(zapLogger, zap.DebugLevel)
 	if err != nil {
 		return nil, err
 	}
