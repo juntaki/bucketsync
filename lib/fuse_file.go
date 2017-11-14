@@ -117,9 +117,6 @@ func (f *OpenedFile) Write(data []byte, off int64) (written uint32, code fuse.St
 		zap.Int64("offset", off))
 	f.dirty = true
 
-	f.file.sess.logger.Debug("Write/extent", zap.Int64("extentSize", ExtentSize),
-		zap.Int64("file.extentSize", f.file.ExtentSize))
-
 	first := off / f.file.ExtentSize
 	startOffset := off - (first)*f.file.ExtentSize
 	pos := 0

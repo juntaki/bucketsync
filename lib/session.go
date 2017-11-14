@@ -106,7 +106,7 @@ func (s *Session) CreateFile(key, parent ObjectKey, mode uint32, context *fuse.C
 	return &File{
 		Key:        key,
 		Meta:       NewMeta(fuse.S_IFREG|mode, context),
-		ExtentSize: ExtentSize,
+		ExtentSize: s.config.ExtentSize,
 		Extent:     make(map[int64]*Extent, 0),
 		sess:       s,
 	}

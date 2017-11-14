@@ -179,7 +179,11 @@ func config(cli *cli.Context) error {
 		config.Logging = cli.String("logging")
 	}
 
+	// advance setting
 	config.LogOutputPath = configDir("bucketsync.log")
+	config.CacheSize = 1024
+	config.ExtentSize = 1024 * 64
+
 	// TODO: check logging mode
 	configYAML, err := yaml.Marshal(config)
 	if err != nil {
