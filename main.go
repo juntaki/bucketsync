@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"runtime/pprof"
 
 	"io/ioutil"
 
@@ -203,14 +202,6 @@ func config(cli *cli.Context) error {
 }
 
 func mount(cli *cli.Context) error {
-	cpuprofile := "cpu.profile"
-	f, err := os.Create(cpuprofile)
-	if err != nil {
-		log.Fatal(err)
-	}
-	pprof.StartCPUProfile(f)
-	defer pprof.StopCPUProfile()
-
 	config, err := readConfig()
 	if err != nil {
 		return err
