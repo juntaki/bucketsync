@@ -10,6 +10,8 @@ type Config struct {
 	LogOutputPath string `yaml:"log_output_path"`
 	CacheSize     int    `yaml:"cache_size"`
 	ExtentSize    int64  `yaml:"extent_size"`
+	Encryption    bool   `yaml:"encryption"`
+	Compression   bool   `yaml:"compression"`
 }
 
 func (c *Config) validate() bool {

@@ -157,7 +157,10 @@ func readConfig() (*bucketsync.Config, error) {
 func config(cli *cli.Context) error {
 	config, err := readConfig()
 	if err != nil {
-		config = &bucketsync.Config{}
+		config = &bucketsync.Config{
+			Encryption:  true,
+			Compression: true,
+		}
 	}
 	if cli.String("bucket") != "" {
 		config.Bucket = cli.String("bucket")
