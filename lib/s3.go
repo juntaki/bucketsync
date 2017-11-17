@@ -13,10 +13,12 @@ import (
 )
 
 type S3Session struct {
-	svc    *s3.S3
-	cache  *cache
-	logger *Logger
-	bucket string
+	svc         *s3.S3
+	cache       *cache
+	logger      *Logger
+	cipher      *Cipher
+	compression bool
+	bucket      string
 }
 
 func NewS3Session(config *Config, logger *Logger) (*S3Session, error) {
@@ -33,11 +35,22 @@ func NewS3Session(config *Config, logger *Logger) (*S3Session, error) {
 		//LogLevel: aws.LogLevel(aws.LogDebugWithHTTPBody),
 	})
 
-	return &S3Session{svc: svc,
-		cache:  NewCache(10),
-		logger: logger,
-		bucket: config.Bucket,
-	}, nil
+	s3Session := &S3Session{svc: svc,
+		cache:       NewCache(10),
+		logger:      logger,
+		bucket:      config.Bucket,
+		compression: config.Compression,
+	}
+
+	if config.Encryption {
+		var err error
+		s3Session.cipher, err = NewCipher(config.Password)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return s3Session, nil
 }
 
 func (s *S3Session) DownloadWithCache(key ObjectKey) ([]byte, error) {

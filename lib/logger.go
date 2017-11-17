@@ -3,6 +3,8 @@ package bucketsync
 import (
 	"strings"
 
+	"os"
+
 	"go.uber.org/zap"
 )
 
@@ -11,6 +13,12 @@ type Logger struct {
 }
 
 func NewLogger(outputPath string, debug bool) (logger *Logger, err error) {
+	file, err := os.OpenFile(outputPath, os.O_RDONLY|os.O_CREATE, 0666)
+	if err != nil {
+		return nil, err
+	}
+	file.Close()
+
 	var config zap.Config
 	if debug {
 		config = zap.NewDevelopmentConfig()
