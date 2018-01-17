@@ -40,7 +40,7 @@ func InodeHash(o ObjectKey) uint64 {
 }
 
 func NewObjectKey() ObjectKey {
-	return uuid.NewV4().String()
+	return uuid.Must(uuid.NewV4()).String()
 }
 
 func (f *FileSystem) GetAttr(name string, context *fuse.Context) (*fuse.Attr, fuse.Status) {
